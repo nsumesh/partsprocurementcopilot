@@ -32,3 +32,8 @@ app.add_middleware(
 app.include_router(vin.router)
 app.include_router(search.router)
 app.include_router(orders.router)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}

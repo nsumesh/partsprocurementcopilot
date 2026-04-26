@@ -1,0 +1,31 @@
+[build]
+  builder = "dockerfile"
+
+[[services]]
+  name = "api"
+  source = "backend"
+  dockerfilePath = "backend/Dockerfile"
+
+  [services.deploy]
+    startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheckPath = "/health"
+    restartPolicyType = "on_failure"
+    restartPolicyMaxRetries = 3
+
+  [[services.variables]]
+    name = "PORT"
+    value = "8000"
+
+[[services]]
+  name = "frontend"
+  source = "frontend"
+  dockerfilePath = "frontend/Dockerfile"
+
+  [services.deploy]
+    healthcheckPath = "/"
+    restartPolicyType = "on_failure"
+    restartPolicyMaxRetries = 3
+
+  [[services.variables]]
+    name = "PORT"
+    value = "80"
