@@ -406,7 +406,7 @@ Living document. Updated after each batch is approved. One entry per file: what 
 
 ## frontend/src/App.tsx
 
-**What it does:** Top-level React component. Wraps the app in a `BrowserRouter` and declares two routes: `/` → `SearchPage`, `/orders` → `OrdersPage`.
+**What it does:** Top-level React component. Wraps the app in a `BrowserRouter` and declares three routes: `/` → `SearchPage`, `/results` → `ResultsPage`, `/orders` → `OrdersPage`.
 
 **External services:** None.
 
@@ -421,6 +421,56 @@ Living document. Updated after each batch is approved. One entry per file: what 
 **External services:** None.
 
 **What calls it:** Loaded by `index.html` as the Vite module entry point.
+
+---
+
+## frontend/src/components/SearchBar.tsx
+
+**What it does:** Controlled form with three inputs — VIN (text, 17-char max), query (textarea), and urgency toggle (Standard / Urgent button group). On VIN input blur, calls `decodeVin` and shows the vehicle confirmation ("2014 Kenworth T680 — Paccar MX-13") in orange, or an error in red if the VIN is unrecognized. Submit button is disabled until VIN is exactly 17 characters and query is non-empty.
+
+**External services:** Backend `GET /vin/{vin}` (via `decodeVin`).
+
+**What calls it:** `SearchPage.tsx`.
+
+---
+
+## frontend/src/components/PartCard.tsx
+
+**What it does:** Renders a single search result as a dark card with fade-in animation on mount (triggered as cards stream in). Displays part name, part number (monospace), category chip, source chip (OEM=blue / Aftermarket=purple), fitment confidence badge (color-coded), and price. The full card is clickable to open the detail panel.
+
+**External services:** None.
+
+**What calls it:** `ResultsPage.tsx` — one card per item in the filtered results array.
+
+---
+
+## frontend/src/components/PartDetail.tsx
+
+**What it does:** Slide-in right panel showing full part detail. Sections: fitment confidence badge + reasoning paragraph, physical attributes key/value table (from `part.attributes`), vendor sources list (vendor name, URL, price). "Order this part" button triggers the order confirm flow. Rendered on top of a blurred dark backdrop; clicking outside or the X button closes it.
+
+**External services:** None.
+
+**What calls it:** `ResultsPage.tsx` — rendered when `selectedResult` is set.
+
+---
+
+## frontend/src/components/OrderConfirm.tsx
+
+**What it does:** Modal overlay for confirming an order. Shows part name and number, a quantity number input (min 1, default 1), and a live-calculated total (`price × qty`). On confirm, calls `createOrder` to POST to the backend then calls `onConfirm` to navigate to orders. Animated with `fade-up` on mount.
+
+**External services:** Backend `POST /orders` (via `createOrder`).
+
+**What calls it:** `ResultsPage.tsx` — rendered when `confirmTarget` is set.
+
+---
+
+## frontend/src/components/OrderHistory.tsx
+
+**What it does:** Renders all past orders as a dark-themed table. Columns: Part Name, Part Number, Qty, VIN, Urgency (urgent gets an orange badge), Date. Shows an empty-state message when no orders exist. Stateless — receives the `orders` array as a prop.
+
+**External services:** None.
+
+**What calls it:** `OrdersPage.tsx`.
 
 ---
 
@@ -451,5 +501,45 @@ Living document. Updated after each batch is approved. One entry per file: what 
 Color tokens used: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (inputs/elevated), `zinc-700` (borders/toggles), `orange-500` (primary CTA), `orange-400` (hover/accent text), `white`/`zinc-400`/`zinc-500` (text hierarchy).
 
 Branding: "HeaviAI Procurement CoPilot" with "Procurement" in orange on the landing page.
+
+---
+
+## backend/Dockerfile
+
+**What it does:** Builds the FastAPI backend into a `python:3.12-slim` image. Installs `uv`, syncs dependencies from `uv.lock` with `--frozen --no-dev`, copies `app/` and `ingestion/` into the image. Uses shell-form CMD so `${PORT:-8000}` is expanded at runtime — Railway injects `$PORT` dynamically; the `:-8000` fallback keeps local runs working without setting the variable.
+
+**External services:** None at build time. Connects to Supabase, Anthropic, and Cohere at runtime via environment variables.
+
+**What calls it:** Railway build system (GitHub-connected deploy from `backend/` root directory).
+
+---
+
+## frontend/Dockerfile
+
+**What it does:** Two-stage build. Stage 1: `node:20-alpine` installs dependencies and runs `npm run build` with `VITE_API_BASE_URL` baked in as a build arg. Stage 2: `nginx:alpine` serves the built `dist/` directory. At startup, runs `envsubst '${PORT}'` to substitute Railway's dynamic port into the nginx config template before nginx reads it.
+
+**External services:** None at runtime. The built JS bundle calls the backend API directly from the user's browser.
+
+**What calls it:** Railway build system (GitHub-connected deploy from `frontend/` root directory).
+
+---
+
+## frontend/nginx.conf
+
+**What it does:** nginx server block template for the React SPA. Listens on `${PORT}` (substituted at startup by `envsubst`). Enables gzip, serves static assets with 1-year immutable cache headers, and falls back all unmatched routes to `index.html` so React Router handles client-side navigation.
+
+**External services:** None.
+
+**What calls it:** `frontend/Dockerfile` CMD — `envsubst` writes the resolved config to `default.conf` before nginx starts.
+
+---
+
+## backend/railway.toml / frontend/railway.toml
+
+**What it does:** Per-service Railway config-as-code. Declares `builder = "DOCKERFILE"`, `dockerfilePath = "Dockerfile"`, healthcheck path, and restart policy. Each file is scoped to its own service directory — Railway reads it when the service's Root Directory is set to `backend/` or `frontend/` respectively.
+
+**External services:** Railway build and deploy infrastructure.
+
+**What calls it:** Railway on every GitHub push to `main`.
 
 ---

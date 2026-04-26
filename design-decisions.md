@@ -174,3 +174,27 @@ Update this file whenever a decision is made or reversed.
 
 **Why:** The retrieval pipeline returns at most 10 results. Client-side filtering of 10 items is instant and avoids round-trips. Adding server-side filter params would require re-triggering the full AI pipeline (intent → embed → retrieve → rerank → fitment), which is expensive and slow. The correct pattern is to retrieve broadly then filter locally.
 
+---
+
+### Deployment: Railway Monorepo — Per-Service railway.toml
+
+**Chosen:** One `railway.toml` per service directory (`backend/railway.toml`, `frontend/railway.toml`), each containing only `[build]` and `[deploy]` sections. No root-level multi-service config.
+
+**Why:** Railway config-as-code only supports top-level `[build]` and `[deploy]` for a single service. `[[services]]` blocks are not a valid Railway construct — using them caused Railway to ignore `dockerfilePath` and fall back to Railpack auto-detection, which failed because no recognizable app existed at the repo root. Per-directory configs with Root Directory set per service in the dashboard is the correct Railway monorepo pattern.
+
+---
+
+### Deployment: Dynamic Port via $PORT
+
+**Chosen:** Both backend and frontend read `$PORT` at runtime. Backend uses shell-form CMD with `${PORT:-8000}` fallback. Frontend uses `envsubst` to substitute `${PORT}` into the nginx config template at container startup.
+
+**Why:** Railway assigns a dynamic port via `$PORT` and routes all traffic (including healthchecks) to it. Hardcoding `8000` or `80` means the app starts but is unreachable — healthchecks fail and Railway marks the deployment as failed. The `:-8000` / `:-80` fallbacks preserve local development without any env setup. nginx requires `envsubst` because it does not natively expand environment variables in config files; `envsubst` must be scoped to `${PORT}` only to avoid clobbering nginx's own `$uri`, `$host`, and other internal variables.
+
+---
+
+### Deployment: VITE_API_BASE_URL Must Be Set Before Build
+
+**Chosen:** `VITE_API_BASE_URL` is set as a Railway environment variable on the frontend service before the first `railway up` or GitHub-triggered build.
+
+**Why:** Vite bakes `import.meta.env.VITE_*` values into the JS bundle at build time — they are not runtime environment variables. If the variable is missing or set to `localhost:8000` at build time, every user's browser makes API calls to localhost (which fails silently). The correct order is: deploy backend → get its domain → set `VITE_API_BASE_URL` → deploy frontend.
+

@@ -201,3 +201,23 @@ cd backend && uv run python -m ingestion.eval_runner  # 5/5 golden queries
 cd backend && uv run uvicorn app.main:app --reload    # API dev server
 cd frontend && npm run dev                            # frontend dev server
 ```
+
+---
+
+## Deployment (Railway) — Completed 2026-04-26
+
+Two Railway services deployed from this monorepo. Each service has its Root Directory set in the Railway dashboard so builds use the correct Dockerfile.
+
+| Service | Root Directory | Public URL |
+|---------|---------------|------------|
+| api | `backend/` | https://api-production-4fff.up.railway.app |
+| frontend | `frontend/` | https://frontend-production-bc15.up.railway.app |
+
+**Key lessons learned during deployment:**
+
+- `[[services]]` blocks in `railway.toml` are not valid Railway config — replaced with per-directory `railway.toml` files using only `[build]` and `[deploy]` sections.
+- Railway assigns a dynamic `$PORT` — both services must bind to it. Backend uses shell-form CMD with `${PORT:-8000}`; frontend uses `envsubst` to inject `$PORT` into the nginx config template at startup.
+- `VITE_API_BASE_URL` is a Vite build-time variable baked into the JS bundle. It must be set as a Railway environment variable **before** the frontend build runs, not after.
+- `railway up` from a subdirectory still uploads the full git repo root. GitHub-connected deploys with Root Directory configured per service is the correct monorepo approach.
+
+See `deployment-steps.md` for the full step-by-step guide.

@@ -386,3 +386,43 @@ All 5 golden queries pass: 4 non-ambiguous queries return 10 parts each, Volvo V
 
 **Finding:** Entering year range 2030–2040 still shows parts that have no `year_range` in `fit_notes`. This is intentional: parts with no year compatibility data are treated as universally applicable (common for generic consumables like oils, filters). The filter panel now states "Parts without year data are always shown".
 
+---
+
+### Error 18 — Invalid `railway.toml` multi-service format rejected by Railway
+
+**File:** `railway.toml`
+
+**Root cause:** The root `railway.toml` used `[[services]]` blocks (a non-existent Railway config-as-code construct). Railway only supports top-level `[build]` and `[deploy]` sections for a single service per config file. Railway read the `[build]` section, ignored everything else, and had no `dockerfilePath` — so it fell back to Railpack auto-detection at the repo root where no recognizable app exists.
+
+**Fix applied:** Deleted the invalid root `railway.toml`. Created `backend/railway.toml` and `frontend/railway.toml`, each with valid top-level `[build]` and `[deploy]` sections scoped to their own service. Each service in Railway is configured with its root directory set to `backend/` or `frontend/` respectively.
+
+---
+
+### Error 19 — Backend healthcheck failure: port mismatch (`$PORT` vs hardcoded `8000`)
+
+**File:** `backend/Dockerfile`
+
+**Root cause:** Railway assigns a dynamic port via the `$PORT` environment variable and routes all traffic (including healthchecks) to that port. The Dockerfile CMD used exec form `["uvicorn", ..., "--port", "8000"]`, which does not perform shell variable expansion, so uvicorn always bound to `8000` regardless of what Railway injected as `$PORT`. Every healthcheck returned "service unavailable" even though the app started successfully.
+
+**Fix applied:** Changed the CMD to shell form so `${PORT:-8000}` is expanded at runtime:
+```dockerfile
+CMD uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+The `:-8000` fallback keeps local development working without setting `$PORT`.
+
+---
+
+### Error 20 — Frontend healthcheck failure: nginx hardcoded to port 80
+
+**Files:** `frontend/nginx.conf`, `frontend/Dockerfile`
+
+**Root cause:** Same class of problem as Error 19. nginx was hardcoded to `listen 80;` but Railway routes healthchecks to `$PORT`. nginx does not natively support environment variable substitution in config files, so the port could not be overridden at runtime without additional tooling.
+
+**Fix applied:** Two-part fix:
+1. `nginx.conf` updated to `listen ${PORT};` (treated as a template, not a live config).
+2. `Dockerfile` CMD replaced with a shell command that runs `envsubst` at startup to substitute `${PORT}` into the template before nginx reads it:
+```dockerfile
+CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
+```
+`envsubst` is scoped explicitly to `${PORT}` only — passing the variable list prevents `envsubst` from clobbering nginx's own `$uri`, `$host`, and other internal variables used in `try_files` and `location` blocks.
+
