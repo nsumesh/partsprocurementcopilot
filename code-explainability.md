@@ -36,11 +36,11 @@ Living document. Updated after each batch is approved. One entry per file: what 
 
 ## .env.example
 
-**What it does:** Documents every environment variable the system requires. Covers Supabase credentials, Anthropic and Cohere API keys, Browserbase credentials for the ingestion scraper, and the frontend API base URL. Developers copy this to `.env` and fill in real values; `.env` is gitignored.
+**What it does:** Documents every environment variable the system requires. Covers Supabase credentials, Anthropic and Cohere API keys, Browserbase credentials for the ingestion scraper, and three frontend Vite env vars: `VITE_API_BASE_URL` (backend URL), `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (needed by `ProcurementBoard` for Supabase Realtime WebSocket). Developers copy this to `.env` and fill in real values; `.env` is gitignored.
 
 **External services:** None — this is documentation, not executable.
 
-**What calls it:** Referenced by `backend/app/config.py` (pydantic-settings reads `.env`), and by the frontend Vite build (`VITE_API_BASE_URL`).
+**What calls it:** Referenced by `backend/app/config.py` (pydantic-settings reads `.env`), and by the frontend Vite build (`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 
 ---
 
@@ -56,9 +56,9 @@ Living document. Updated after each batch is approved. One entry per file: what 
 
 ## backend/app/main.py
 
-**What it does:** Creates the FastAPI application with CORS middleware and registers the three API routers (`/vin`, `/search`, `/orders`). On startup, initialises the Supabase client and the SQLite FTS index (rebuilding it from Supabase if the file is missing or empty).
+**What it does:** Creates the FastAPI application with CORS middleware and registers five API routers (`/vin`, `/search`, `/orders`, `/vendors`, `/procurement`). On startup, initialises the Supabase client, rebuilds the SQLite FTS index if missing or empty, and starts `job_processor_loop` as an `asyncio.create_task`. The task handle is cancelled cleanly on shutdown.
 
-**External services:** Supabase (via `db/supabase.py`), SQLite FTS (via `db/sqlite_fts.py`).
+**External services:** Supabase (via `db/supabase.py`), SQLite FTS (via `db/sqlite_fts.py`). Worker task connects to Supabase and Anthropic internally.
 
 **What calls it:** `uvicorn app.main:app` — the entry point for the backend service.
 
@@ -404,9 +404,19 @@ Living document. Updated after each batch is approved. One entry per file: what 
 
 ---
 
+## frontend/src/pages/ProcurementBoard.tsx
+
+**What it does:** Full-page job tracking board at `/procurement`. On mount, fetches all procurement jobs via `getProcurementJobs()` and opens a Supabase Realtime channel (`procurement_jobs_realtime`) subscribed to `postgres_changes` on the `procurement_jobs` table. Incoming change events upsert into the local `jobs` state and also patch `selected` if the updated job is currently open. Renders jobs as a table of `ProcurementJobRow` rows; clicking a row opens `VendorOutreachPanel` as a slide-in panel. `handleJobUpdate` propagates panel-driven mutations (send follow-up, accept, reject) back into both `jobs` and `selected`. Shows loading, error, and empty-state slots.
+
+**External services:** Backend `GET /procurement/jobs` (initial load), Supabase Realtime WebSocket (`VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` env vars).
+
+**What calls it:** `App.tsx` route `/procurement`. Navigation link present in `ResultsPage` header and within the board's own header.
+
+---
+
 ## frontend/src/App.tsx
 
-**What it does:** Top-level React component. Wraps the app in a `BrowserRouter` and declares three routes: `/` → `SearchPage`, `/results` → `ResultsPage`, `/orders` → `OrdersPage`.
+**What it does:** Top-level React component. Wraps the app in a `BrowserRouter` and declares four routes: `/` → `SearchPage`, `/results` → `ResultsPage`, `/orders` → `OrdersPage`, `/procurement` → `ProcurementBoard`.
 
 **External services:** None.
 
@@ -446,7 +456,7 @@ Living document. Updated after each batch is approved. One entry per file: what 
 
 ## frontend/src/components/PartDetail.tsx
 
-**What it does:** Slide-in right panel showing full part detail. Sections: fitment confidence badge + reasoning paragraph, physical attributes key/value table (from `part.attributes`), vendor sources list (vendor name, URL, price). "Order this part" button triggers the order confirm flow. Rendered on top of a blurred dark backdrop; clicking outside or the X button closes it.
+**What it does:** Slide-in right panel showing full part detail. Sections: fitment confidence badge + reasoning paragraph, brand + unit price, description, specifications key/value table (from `part.attributes`), vendor sources list (vendor name, link). Two footer buttons: "Order This Part" (`onOrder`) for a simple intent order and "Procure →" (`onProcure`) which kicks off the vendor outreach flow. Rendered on top of a blurred dark backdrop; clicking outside or the X button closes it.
 
 **External services:** None.
 
@@ -574,15 +584,6 @@ Branding: "HeaviAI Procurement CoPilot" with "Procurement" in orange on the land
 
 ---
 
-## backend/app/main.py (vendor outreach extensions)
-
-**What it does:** Extended lifespan to start `job_processor_loop` as an `asyncio.create_task` after Supabase and FTS initialise. The task handle is stored so it can be cancelled cleanly on shutdown via `worker_task.cancel()`. Two new routers registered: `vendors_router` (`/vendors`) and `procurement_router` (`/procurement`).
-
-**External services:** Same as before. Worker task connects to Supabase and Anthropic internally.
-
-**What calls it:** `uvicorn app.main:app` — entry point unchanged.
-
----
 
 ## frontend/src/components/VendorSelector.tsx
 
