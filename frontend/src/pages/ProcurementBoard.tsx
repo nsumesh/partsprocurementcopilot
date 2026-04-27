@@ -46,8 +46,8 @@ export default function ProcurementBoard() {
   }, [])
 
   function handleJobUpdate(updated: ProcurementJob) {
-    setJobs(prev => prev.map(j => j.id === updated.id ? updated : j))
-    setSelected(updated)
+    setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j))
+    setSelected(prev => prev ? { ...prev, ...updated } : updated)
   }
 
   return (
