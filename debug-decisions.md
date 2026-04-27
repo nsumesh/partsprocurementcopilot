@@ -4,6 +4,36 @@ Running log of errors encountered during development, root causes, and fixes app
 
 ---
 
+## 2026-04-27 — CP-V3: PGRST200 — no FK between procurement_jobs and vendor_parts
+
+**Error:** `fetch_pending_simulations` used `select("*, vendor:vendors(*), vendor_part:vendor_parts(*)")`. PostgREST requires a declared FK to traverse a relationship. `procurement_jobs` has FKs to `vendors` and `parts` but not to `vendor_parts`, so the join failed with PGRST200.
+
+**Fix:** Removed `vendor_part:vendor_parts(*)` from the select. Added a new `fetch_vendor_part(client, vendor_id, part_id)` function that queries `vendor_parts` by the job's `vendor_id` + `part_id`. The worker calls this separately inside `_run_simulation` after fetching the job.
+
+**Why:** PostgREST embedded resource syntax (`table:related_table(*)`) only works when a FK exists in the schema. Use separate queries when no direct FK is present.
+
+---
+
+## 2026-04-27 — CP-V3: ranking never fired — parsed_delivery_hours was null
+
+**Error:** `_rank_job` has an early return when `unit_price is None or delivery_hours is None`. `parsed_delivery_hours` was never being set during simulation — only `parsed_delivery_date` (the LLM-extracted text string) was stored. The ranker needs an integer.
+
+**Fix:** In `_run_simulation`, extract `delivery_hours` from `vendor_part.get("delivery_hours")` (the pre-computed integer seeded at ingestion) and include it as `parsed_delivery_hours` in the `update_procurement_job` call alongside the other parsed fields.
+
+**Why:** Two different `delivery_hours` values exist — the seeded integer on `vendor_parts` (reliable) and the LLM-parsed text on the response (unreliable). Ranking should use the seeded integer, not attempt to parse hours from the response text.
+
+---
+
+## 2026-04-26 — Batch 6: fetch_pending_simulations used "now()" string
+
+**Error (pre-empted):** `fetch_pending_simulations` was written with `.lte("respond_at", "now()")`. PostgREST treats this as a literal string comparison, not a SQL `now()` call — the filter would never match any rows.
+
+**Fix:** Import `datetime, timezone` in `db/supabase.py` and pass the actual current timestamp: `.lte("respond_at", datetime.now(timezone.utc).isoformat())`. This is evaluated in Python before the PostgREST query is built.
+
+**Why:** PostgREST filter values are always treated as data, not SQL expressions. SQL functions like `now()` must be evaluated server-side via `.rpc()` or replaced with a client-side timestamp.
+
+---
+
 ## 2026-04-26 — CP-2: First uvicorn boot attempt
 
 Command: `cd backend && uv run uvicorn app.main:app --reload`

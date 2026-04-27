@@ -12,6 +12,7 @@ from ingestion.aftermarket import generate_aftermarket_csv
 from ingestion.embedder import batch_embed
 from ingestion.normalizer import CanonicalPart, normalize_aftermarket, normalize_oe
 from ingestion.scraper import scrape_oe_parts
+from ingestion.vendor_seeder import seed_vendor_parts, seed_vendors
 from ingestion.vin_seeds import seed_vins
 
 _AFTERMARKET_CSV = "data/aftermarket.csv"
@@ -72,6 +73,10 @@ async def run_ingestion() -> None:
 
     print("Step 9/9 — Seeding VIN cache...")
     await seed_vins(supabase)
+
+    print("Seeding vendors and vendor-part mappings...")
+    await seed_vendors(supabase)
+    await seed_vendor_parts(supabase)
 
     elapsed = time.monotonic() - start
     oe_count = sum(1 for p in deduped if p["source"] == "OE")

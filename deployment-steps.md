@@ -70,9 +70,11 @@ railway add
 railway service link frontend
 ```
 
-Set the backend URL (must be done **before** `railway up` — it is baked into the JS bundle at build time):
+Set all frontend variables (must be done **before** `railway up` — they are baked into the JS bundle at build time):
 ```bash
 railway variable set VITE_API_BASE_URL="https://api-production-xxxx.up.railway.app"
+railway variable set VITE_SUPABASE_URL="https://<project-ref>.supabase.co"
+railway variable set VITE_SUPABASE_ANON_KEY="<supabase-anon-public-key>"
 ```
 
 Deploy:
@@ -139,6 +141,8 @@ railway service redeploy
 | Variable | Description |
 |----------|-------------|
 | `VITE_API_BASE_URL` | Full URL of the deployed api service — **must be set before building** |
+| `VITE_SUPABASE_URL` | Supabase project URL — used by browser for Realtime subscription |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (Projects Settings → API → anon public) |
 
 ---
 
@@ -164,3 +168,6 @@ railway service redeploy
 - [ ] Search streams part cards in real time
 - [ ] DevTools Network tab shows `/search` as `text/event-stream` with incremental events
 - [ ] Order placed → appears in Orders page after refresh
+- [ ] "Procure →" on a part opens VendorSelector, then OutreachConfirm, then navigates to /procurement
+- [ ] Procurement board updates live (no refresh) as worker processes the job
+- [ ] Job transitions through to `ranked` within ~2 minutes of sending outreach

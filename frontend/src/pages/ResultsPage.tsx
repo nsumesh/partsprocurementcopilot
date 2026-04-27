@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { streamSearch } from "../api/search"
+import { createProcurementJob } from "../api/procurement"
 import PartCard from "../components/PartCard"
 import PartDetail from "../components/PartDetail"
 import OrderConfirm from "../components/OrderConfirm"
+import VendorSelector from "../components/VendorSelector"
+import OutreachConfirm from "../components/OutreachConfirm"
 import FilterPanel, { DEFAULT_FILTERS } from "../components/FilterPanel"
 import type { FilterState } from "../components/FilterPanel"
-import type { Order, SearchResultPart } from "../types"
+import type { Order, SearchResultPart, VendorPart, ProcurementJob } from "../types"
 
 interface LocationState {
   vin: string
   query: string
   urgency: "standard" | "urgent"
+  urgency_deadline: string | null
 }
 
 function extractYearRange(fit_notes: Record<string, unknown>): { min: number; max: number } | null {
@@ -62,6 +66,10 @@ export default function ResultsPage() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedResult, setSelectedResult] = useState<SearchResultPart | null>(null)
   const [confirmTarget, setConfirmTarget] = useState<SearchResultPart | null>(null)
+  const [procureTarget, setProcureTarget] = useState<SearchResultPart | null>(null)
+  const [selectedVendorPart, setSelectedVendorPart] = useState<VendorPart | null>(null)
+  const [procurementJob, setProcurementJob] = useState<ProcurementJob | null>(null)
+  const [procureDeadline, setProcureDeadline] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
 
   useEffect(() => {
@@ -111,6 +119,12 @@ export default function ResultsPage() {
               className="text-xs text-zinc-500 hover:text-orange-400 font-semibold transition-colors hidden sm:block"
             >
               Orders
+            </button>
+            <button
+              onClick={() => navigate("/procurement")}
+              className="text-xs text-zinc-500 hover:text-orange-400 font-semibold transition-colors hidden sm:block"
+            >
+              Procurement
             </button>
             {isStreaming ? (
               <span className="text-xs text-orange-500 font-bold flex items-center gap-1.5">
@@ -241,6 +255,11 @@ export default function ResultsPage() {
         <PartDetail
           result={selectedResult}
           onOrder={() => { setConfirmTarget(selectedResult); setSelectedResult(null) }}
+          onProcure={() => {
+            setProcureTarget(selectedResult)
+            setProcureDeadline(state.urgency_deadline ?? null)
+            setSelectedResult(null)
+          }}
           onClose={() => setSelectedResult(null)}
         />
       )}
@@ -253,6 +272,47 @@ export default function ResultsPage() {
           urgency={state.urgency}
           onConfirm={(_order: Order) => { setConfirmTarget(null); navigate("/orders") }}
           onCancel={() => setConfirmTarget(null)}
+        />
+      )}
+
+      {procureTarget && !selectedVendorPart && (
+        <VendorSelector
+          part={procureTarget.part}
+          urgency={state.urgency}
+          urgencyDeadline={procureDeadline}
+          onSelect={async (vendorPart, deadline) => {
+            setSelectedVendorPart(vendorPart)
+            setProcureDeadline(deadline)
+            const job = await createProcurementJob({
+              part_id: procureTarget.part.id,
+              vendor_id: vendorPart.vendor_id,
+              part_number: procureTarget.part.part_number,
+              part_name: procureTarget.part.name,
+              vin: state.vin,
+              query: state.query,
+              urgency: state.urgency,
+              urgency_deadline: deadline,
+            })
+            setProcurementJob(job)
+          }}
+          onClose={() => setProcureTarget(null)}
+        />
+      )}
+
+      {procurementJob && selectedVendorPart && (
+        <OutreachConfirm
+          job={procurementJob}
+          onConfirm={(_updated: ProcurementJob) => {
+            setProcureTarget(null)
+            setSelectedVendorPart(null)
+            setProcurementJob(null)
+            navigate("/procurement")
+          }}
+          onCancel={() => {
+            setProcureTarget(null)
+            setSelectedVendorPart(null)
+            setProcurementJob(null)
+          }}
         />
       )}
     </div>

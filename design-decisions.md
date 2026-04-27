@@ -198,3 +198,89 @@ Update this file whenever a decision is made or reversed.
 
 **Why:** Vite bakes `import.meta.env.VITE_*` values into the JS bundle at build time — they are not runtime environment variables. If the variable is missing or set to `localhost:8000` at build time, every user's browser makes API calls to localhost (which fails silently). The correct order is: deploy backend → get its domain → set `VITE_API_BASE_URL` → deploy frontend.
 
+---
+
+## Vendor Outreach Agent (Feature Addition — 2026-04-26)
+
+### Background Job Execution: Supabase-Polled Worker Loop
+
+**Chosen:** A background coroutine starts at FastAPI lifespan. It polls `procurement_jobs` every 30 seconds for jobs whose `respond_at` timestamp has passed, then fires vendor response simulation and state transitions. All job state lives in Supabase — the worker is stateless and safe to restart.
+
+**Why:** FastAPI `BackgroundTasks` lose in-flight jobs on container restart. A separate Railway worker service adds infra cost. The Supabase-polled loop is the simplest durable approach: zero new infrastructure, jobs survive restarts.
+
+**Tradeoff:** Up to 30s lag between `respond_at` passing and the state transition firing. Acceptable given simulation delays are in minutes.
+
+---
+
+### Live Job Board: Supabase Realtime
+
+**Chosen:** Frontend subscribes to `procurement_jobs` table changes via `@supabase/supabase-js` Realtime (Postgres logical replication → WebSocket). Requires adding `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as frontend build-time env vars.
+
+**Why:** Supabase is already the source of truth. No backend SSE endpoint needed, no polling. Anon key is safe to expose in the frontend — protected by RLS.
+
+**Tradeoff:** Frontend now has two API surfaces: FastAPI for writes/actions, Supabase Realtime for live read subscriptions.
+
+---
+
+### Vendor-Part Matching: Explicit vendor_parts Table
+
+**Chosen:** Ingestion script generates a `vendor_parts` table with explicit `(vendor_id, part_id)` rows. Each row has a `delivery_estimate` in randomised natural-language format ("3-5 business days", "48 hours", "2 weeks") and a `list_price`. Claude Haiku parses `delivery_estimate` into `delivery_hours` for ranking. ETA range: 2 hours to 20 days.
+
+**Why:** Category-based matching is too coarse. Explicit mapping is precise. Mixed-format delivery estimates intentionally test the LLM parser against heterogeneous data.
+
+---
+
+### Vendor-Part Source Matching: Regex on parts.source
+
+**Chosen:** `vendor_seeder.py` splits vendors into OE pool (`type` in {OE Distributor, OE Manufacturer, OE}) and Aftermarket pool (`type` in {Aftermarket Distributor, Aftermarket, Regional Aftermarket}). Each part is matched to the pool that corresponds to its `source` column using `re.search(r'^oe$', source, re.IGNORECASE)` and `re.search(r'^aftermarket$', source, re.IGNORECASE)`. Parts with unrecognised source values are skipped. 2–5 vendors are then randomly sampled from the matched pool per part.
+
+**Why:** OE parts should only appear under OE-type vendors and aftermarket parts under aftermarket-type vendors — cross-listing would be inaccurate for the demo. Regex with `re.IGNORECASE` is more robust than a plain string comparison given the `parts.source` column stores `"OE"` (uppercase) and `"aftermarket"` (lowercase), and the case convention could drift. Parts with unknown source values are skipped rather than defaulted to avoid silent mismatches.
+
+---
+
+### State Machine Schema: Jobs + Events Log
+
+**Chosen:** Two tables — `procurement_jobs` (current state snapshot) and `procurement_events` (immutable transition log with `from_status`, `to_status`, `actor`, `metadata`).
+
+**Why:** "Time elapsed in current state" and "last action taken" (required by the job board) are impossible to compute accurately from a single status column. The event log makes both trivial.
+
+---
+
+### Vendor Response Simulation: Minute-Scale Delays by Response Rate
+
+**Chosen:** `respond_at = outreach_sent_at + simulated_delay` where:
+- Response rate ≥ 0.85: **3 minutes**
+- Response rate 0.70–0.85: **10–15 minutes** (random within range)
+- Response rate < 0.70: **20 minutes**
+
+Worker polls every 30s and fires simulation when `now() >= respond_at`.
+
+**Why:** Minute-scale delays make the job board visibly update during a demo session while preserving relative ordering between fast and slow vendors.
+
+---
+
+### Follow-Up Email: Auto-Generated, User-Editable Before Send
+
+**Chosen:** When parsed response is missing required fields, Claude Haiku generates a follow-up referencing the original outreach, the vendor's response text, and the specific missing fields. Shown in an editable textarea. User can edit and confirm send, or discard.
+
+**Why:** Auto-generation removes the blank-page problem. Editable because the operator may want to adjust tone. Consistent with "agent assists, human confirms" pattern used throughout.
+
+---
+
+### Ranking Formula
+
+**Chosen:** `score = (0.4 × price_score) + (0.4 × delivery_score) + (0.2 × response_rate)`
+- `price_score = 1 - (unit_price / max_catalog_price)`
+- `delivery_score = 1 - (delivery_hours / 480)` — 480h = 20-day ceiling
+- `response_rate` — vendor historical rate from `vendors` table (0–1)
+
+User can Accept (→ `accepted`) or Reject (→ `rejected`) after seeing the score. No automatic acceptance.
+
+---
+
+### Email Simulation: Varied Voices, Intentional Missing Fields
+
+**Chosen:** Simulated vendor responses generated by Claude Haiku with varied tone (formal corporate, casual regional, terse truck-stop) and format. Missing fields introduced probabilistically: `P(field_missing) = (1 - vendor.response_rate) × 0.6`.
+
+**Why:** Uniform complete responses make the parser trivial and the follow-up path never trigger. Intentional gaps exercise the full state machine in demos.
+

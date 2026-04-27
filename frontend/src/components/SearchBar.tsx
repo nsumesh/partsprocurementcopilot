@@ -3,14 +3,20 @@ import { decodeVin } from "../api/vin"
 import type { VINSpec } from "../types"
 
 interface Props {
-  onSearch: (vin: string, query: string, urgency: "standard" | "urgent") => void
+  onSearch: (vin: string, query: string, urgency: "standard" | "urgent", urgency_deadline: string | null) => void
   isLoading: boolean
+}
+
+function minDeadline(): string {
+  const d = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  return d.toISOString().slice(0, 16)
 }
 
 export default function SearchBar({ onSearch, isLoading }: Props) {
   const [vin, setVin] = useState("")
   const [query, setQuery] = useState("")
   const [urgency, setUrgency] = useState<"standard" | "urgent">("standard")
+  const [urgencyDeadline, setUrgencyDeadline] = useState<string>("")
   const [vinSpec, setVinSpec] = useState<VINSpec | null>(null)
   const [vinChecking, setVinChecking] = useState(false)
   const [vinError, setVinError] = useState(false)
@@ -31,10 +37,15 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
     setVinChecking(false)
   }
 
+  function handleSetUrgent() {
+    setUrgency("urgent")
+    if (!urgencyDeadline) setUrgencyDeadline(minDeadline())
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!vin.trim() || !query.trim() || isLoading) return
-    onSearch(vin.trim(), query.trim(), urgency)
+    onSearch(vin.trim(), query.trim(), urgency, urgency === "urgent" ? (urgencyDeadline || null) : null)
   }
 
   return (
@@ -103,7 +114,7 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => setUrgency("urgent")}
+            onClick={handleSetUrgent}
             className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
               urgency === "urgent"
                 ? "bg-orange-500 text-white"
@@ -122,6 +133,22 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
           {isLoading ? "Searching…" : "Find Parts →"}
         </button>
       </div>
+
+      {/* Deadline picker — shown only when urgent */}
+      {urgency === "urgent" && (
+        <div className="pt-1">
+          <label className="block text-xs font-semibold text-orange-400 mb-1.5">
+            Needed by
+          </label>
+          <input
+            type="datetime-local"
+            value={urgencyDeadline}
+            min={minDeadline()}
+            onChange={e => setUrgencyDeadline(e.target.value)}
+            className="w-full px-4 py-2.5 bg-zinc-800 border border-orange-500/40 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow"
+          />
+        </div>
+      )}
     </form>
   )
 }

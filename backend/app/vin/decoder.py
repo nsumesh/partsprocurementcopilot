@@ -1,3 +1,4 @@
+import re
 import httpx
 from supabase import AsyncClient
 
@@ -5,12 +6,17 @@ from app.config import Settings
 from app.db.supabase import get_vin_cache, upsert_vin_cache
 from app.schemas.search import VINSpec
 
+_VIN_RE = re.compile(r'^[A-HJ-NPR-Z0-9]{17}$', re.IGNORECASE)
+
 
 async def decode_vin(
     vin: str, client: AsyncClient, settings: Settings
 ) -> VINSpec | None:
+    if not _VIN_RE.match(vin):
+        return None
+
     cached = await get_vin_cache(client, vin)
-    if cached:
+    if cached and (cached.get("make") or cached.get("model")):
         return VINSpec(
             vin=cached["vin"],
             make=cached.get("make"),
@@ -42,6 +48,9 @@ async def decode_vin(
     engine = " ".join(engine_parts) or None
 
     gvwr = results.get("GVWR") or None
+
+    if not make and not model:
+        return None
 
     spec = VINSpec(vin=vin, make=make, model=model, year=year, engine=engine, gvwr=gvwr)
 

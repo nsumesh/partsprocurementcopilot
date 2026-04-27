@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { getOrders } from "../api/orders"
 import OrderHistory from "../components/OrderHistory"
 import type { Order } from "../types"
 
 export default function OrdersPage() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -19,20 +20,29 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen bg-zinc-950">
       <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur border-b border-zinc-800">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="text-sm text-zinc-500 hover:text-white font-semibold transition-colors"
-            >
-              ← Back
-            </Link>
-            <div className="w-px h-5 bg-zinc-800" />
-            <span className="text-sm font-black text-white">
-              HeaviAI <span className="text-orange-500">·</span>
-            </span>
-            <span className="text-sm font-semibold text-zinc-400">Order History</span>
-          </div>
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-1">
+          <span className="text-sm font-black text-white mr-4">
+            HeaviAI <span className="text-orange-500">·</span>
+          </span>
+          <button
+            onClick={() => navigate("/")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-zinc-500 hover:text-white hover:bg-zinc-800/60 transition-colors"
+          >
+            Search
+          </button>
+          <button
+            onClick={() => navigate("/orders")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-zinc-800 text-white"
+          >
+            Orders
+          </button>
+          <button
+            onClick={() => navigate("/procurement")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-zinc-500 hover:text-white hover:bg-zinc-800/60 transition-colors"
+          >
+            Procurement
+          </button>
+          <div className="flex-1" />
           <Link
             to="/"
             className="px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20"

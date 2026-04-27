@@ -16,6 +16,33 @@ export default function SearchPage() {
         }}
       />
 
+      {/* Top nav */}
+      <header className="relative z-10 border-b border-zinc-800/60">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-1">
+          <span className="text-sm font-black text-white mr-4">
+            HeaviAI <span className="text-orange-500">·</span>
+          </span>
+          <button
+            onClick={() => navigate("/")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-zinc-800 text-white"
+          >
+            Search
+          </button>
+          <button
+            onClick={() => navigate("/orders")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-zinc-500 hover:text-white hover:bg-zinc-800/60 transition-colors"
+          >
+            Orders
+          </button>
+          <button
+            onClick={() => navigate("/procurement")}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-zinc-500 hover:text-white hover:bg-zinc-800/60 transition-colors"
+          >
+            Procurement
+          </button>
+        </div>
+      </header>
+
       <div className="relative flex-1 flex items-center justify-center px-4 py-16">
         <div className="w-full max-w-xl">
           {/* Brand */}
@@ -41,8 +68,8 @@ export default function SearchPage() {
           {/* Form card */}
           <div className="bg-zinc-900 rounded-3xl border border-zinc-800 p-8 shadow-2xl shadow-black/60">
             <SearchBar
-              onSearch={(vin, query, urgency) =>
-                navigate("/results", { state: { vin, query, urgency } })
+              onSearch={(vin, query, urgency, urgency_deadline) =>
+                navigate("/results", { state: { vin, query, urgency, urgency_deadline } })
               }
               isLoading={false}
             />

@@ -543,3 +543,254 @@ Branding: "HeaviAI Procurement CoPilot" with "Procurement" in orange on the land
 **What calls it:** Railway on every GitHub push to `main`.
 
 ---
+
+## backend/app/schemas/procurement.py
+
+**What it does:** Pydantic models for the vendor outreach feature. Defines `JobStatus` as a Literal union of all 10 state machine states. `Vendor` models the 10 vendor records (name, email, region, type, brands, response_rate). `VendorPart` models the explicit vendor×part mapping (pricing, delivery_estimate string, delivery_hours int, in_stock). `ProcurementJobCreate` is the POST body for creating a job. `ProcurementJob` is the full snapshot model including all generated/received email text, parsed fields from the vendor response, ranking_score, and respond_at timestamp. `ProcurementEvent` models one immutable event log row (from/to status, actor, metadata).
+
+**External services:** None.
+
+**What calls it:** `api/vendors.py`, `api/procurement.py` (request/response types). `workers/job_processor.py` uses `JobStatus` states for transition logic.
+
+---
+
+## backend/ingestion/vendor_seeder.py
+
+**What it does:** Seeds the `vendors` and `vendor_parts` tables. `seed_vendors` upserts 10 hardcoded vendors from `vendors.md` (on_conflict="name"). `seed_vendor_parts` fetches all parts and all vendors, splits vendors into OE pool and Aftermarket pool by vendor type, then for each part uses `re.search` (case-insensitive) on `part.source` to pick the matching pool and randomly samples 2–5 vendors from it. Each mapping row gets a random `delivery_estimate` string from a fixed pool, its corresponding `delivery_hours` integer, a `list_price` with ±25% variation from the part's catalog price, and an 80% probability of `in_stock=True`. Can be run standalone via `python -m ingestion.vendor_seeder` or called from `loader.py`.
+
+**External services:** Supabase (`vendors`, `vendor_parts`, `parts` tables).
+
+**What calls it:** `ingestion/loader.py` (after VIN seed step). Also runnable directly for re-seeding vendors without a full ingestion run.
+
+---
+
+## backend/ingestion/loader.py (vendor seeder extension)
+
+**What it does:** Extended with two calls after the existing 9-step pipeline — `seed_vendors(supabase)` and `seed_vendor_parts(supabase)` — appended as separate logic without renumbering the original steps. The vendor seeding runs after parts are already in Supabase so `seed_vendor_parts` can fetch assigned UUIDs.
+
+**External services:** Same as before — Supabase, Cohere, Anthropic, Browserbase/Playwright, SQLite.
+
+**What calls it:** `python -m ingestion.loader` from `backend/`.
+
+---
+
+## backend/app/main.py (vendor outreach extensions)
+
+**What it does:** Extended lifespan to start `job_processor_loop` as an `asyncio.create_task` after Supabase and FTS initialise. The task handle is stored so it can be cancelled cleanly on shutdown via `worker_task.cancel()`. Two new routers registered: `vendors_router` (`/vendors`) and `procurement_router` (`/procurement`).
+
+**External services:** Same as before. Worker task connects to Supabase and Anthropic internally.
+
+**What calls it:** `uvicorn app.main:app` — entry point unchanged.
+
+---
+
+## frontend/src/components/VendorSelector.tsx
+
+**What it does:** Modal for selecting a vendor before creating a procurement job. Fetches `VendorPart[]` from `getVendorsForPart` on mount and renders each as a clickable card showing vendor name, type badge, response rate badge (green/yellow/red), ETA, and price. When urgency is `urgent`, renders a datetime-local input pre-filled with `urgencyDeadline` (min = now+2h) and dims vendors whose `delivery_hours` would exceed the deadline with an amber warning. Clicking a card calls `onSelect(vendorPart, deadline)`.
+
+**External services:** Backend `/vendors/part/{part_id}` (via `getVendorsForPart`).
+
+**What calls it:** `ResultsPage` — opened when user clicks "Create Procurement Request" in `PartDetail`.
+
+---
+
+## frontend/src/components/OutreachConfirm.tsx
+
+**What it does:** Modal showing the Haiku-generated outreach email in an editable `textarea`. User can edit before sending. "Send Outreach" calls `sendOutreach(job.id)`, which transitions the job to `outreach_sent`. Calls `onConfirm(updatedJob)` on success.
+
+**External services:** Backend `POST /procurement/jobs/{id}/send` (via `sendOutreach`).
+
+**What calls it:** `ResultsPage` — shown after job is created and vendor is selected.
+
+---
+
+## frontend/src/components/VendorOutreachPanel.tsx
+
+**What it does:** Right-side slide-in panel (same pattern as `PartDetail`) showing the full lifecycle of a procurement job. Sections: vendor info card, collapsible outreach email, vendor response email, parsed fields table (missing values shown in amber), follow-up textarea editor when status is `follow_up_required`, ranking score breakdown with three `ScoreBar` sub-components when ranked, Accept/Reject sticky footer when ranked. All actions (send follow-up, accept, reject) call the relevant API function via the shared `act()` helper and propagate the updated job to the parent via `onJobUpdate`.
+
+**External services:** Backend procurement endpoints (via `sendFollowup`, `acceptJob`, `rejectJob`).
+
+**What calls it:** `ProcurementBoard` — opened when a job row is clicked.
+
+---
+
+## frontend/src/components/ProcurementJobRow.tsx
+
+**What it does:** Single table row for the procurement job board. Displays part name + part number, vendor name + type, status badge (color-coded with pulse animation for awaiting states), time elapsed since last event, and a "last action" string derived from the final event in `job.events`. Clicking the row calls `onClick`.
+
+**External services:** None.
+
+**What calls it:** `ProcurementBoard` — one row per job in the jobs table.
+
+---
+
+## frontend/src/types/index.ts (vendor outreach extensions)
+
+**What it does:** Extended with six new types for the vendor outreach feature: `Vendor`, `VendorPart`, `JobStatus` union, `ProcurementEvent`, `ProcurementJob` (full job snapshot including all email fields, parsed fields, ranking score, and nested vendor + events), `ProcurementJobCreate` (POST body). Mirrors the backend Pydantic schemas exactly.
+
+**External services:** None.
+
+**What calls it:** `api/vendors.ts`, `api/procurement.ts`, all new components (VendorSelector, OutreachConfirm, VendorOutreachPanel, ProcurementJobRow, ProcurementBoard).
+
+---
+
+## frontend/src/api/vendors.ts
+
+**What it does:** Single function `getVendorsForPart(part_id)` — calls `GET /vendors/part/{part_id}` and returns `VendorPart[]`.
+
+**External services:** Backend `/vendors/part/{part_id}` endpoint.
+
+**What calls it:** `VendorSelector` component on mount.
+
+---
+
+## frontend/src/api/procurement.ts
+
+**What it does:** Seven typed wrappers covering the full job lifecycle: `createProcurementJob`, `getProcurementJobs`, `getProcurementJob`, `sendOutreach`, `sendFollowup` (accepts optional edited email body), `acceptJob`, `rejectJob`. All use `apiGet`/`apiPost` from `client.ts`.
+
+**External services:** Backend `/procurement/*` endpoints.
+
+**What calls it:** `ResultsPage` (create + send), `VendorOutreachPanel` (followup, accept, reject), `ProcurementBoard` (list).
+
+---
+
+## frontend/package.json (vendor outreach extension)
+
+**What it does:** Added `@supabase/supabase-js: ^2.0.0` to dependencies for Supabase Realtime subscription on the job board.
+
+**External services:** npm registry at install time; Supabase WebSocket at runtime.
+
+**What calls it:** `ProcurementBoard` page imports `createClient` from `@supabase/supabase-js`.
+
+---
+
+## backend/app/api/vendors.py
+
+**What it does:** Exposes `GET /vendors/part/{part_id}` — returns all in-stock vendor-part mappings for a given part, with the related vendor record embedded. Returns 404 if no vendors are found.
+
+**External services:** Supabase (`vendor_parts` + `vendors` JOIN via `fetch_vendors_for_part`).
+
+**What calls it:** Frontend `api/vendors.ts` — called when VendorSelector modal opens to populate the vendor list.
+
+---
+
+## backend/app/api/procurement.py
+
+**What it does:** Seven endpoints covering the full procurement job lifecycle. `POST /jobs` fetches the part, vendor, and decoded VIN spec, generates the outreach email via `email_generator`, inserts the job at `created` status, and writes the first event row. `POST /jobs/{id}/send` and `/followup` transition status and compute `respond_at` using `_respond_at()` — a helper that maps vendor `response_rate` to 3 / 10–15 / 20 minute delays. `/followup` accepts an optional edited `follow_up_email` body. `/accept` and `/reject` guard that the job is in `ranked` status before transitioning. All actions write a `procurement_events` row. `FollowUpBody` is a local Pydantic model for the optional follow-up body.
+
+**External services:** Supabase (jobs, events, vendors, parts tables), Anthropic API (via `email_generator` on job creation), NHTSA/VIN cache (via `decode_vin`).
+
+**What calls it:** Frontend `api/procurement.ts` — all job lifecycle actions.
+
+---
+
+## backend/app/workers/job_processor.py
+
+**What it does:** Background async coroutine started at FastAPI lifespan. Polls every 30 seconds. In each cycle: (1) fetches jobs in `outreach_sent` or `follow_up_sent` whose `respond_at <= now()`, simulates the vendor response via `response_simulator`, parses it via `email_parser`, generates a follow-up email if fields are missing (→ `follow_up_required`) or marks the job `confirmed` if all fields present, writes a `procurement_events` row for each transition. (2) Fetches `confirmed` jobs with null `ranking_score`, computes the composite score via `ranker`, transitions to `ranked`. Creates its own `AsyncAnthropic` client from settings — does not depend on `app.state.anthropic`. Per-job `try/except` keeps one failed job from blocking the rest; errors are logged and written to `procurement_events` metadata.
+
+**External services:** Supabase (`procurement_jobs`, `procurement_events`), Anthropic API (via agent modules).
+
+**What calls it:** `app/main.py` lifespan — started as `asyncio.create_task(job_processor_loop(app.state))` and cancelled on shutdown (Batch 8).
+
+---
+
+## backend/app/agents/email_generator.py
+
+**What it does:** Generates a professional parts outreach email using Claude Haiku. Accepts the part dict, vendor dict, decoded VIN spec dict, urgency, and optional deadline. Appends an urgency line when the request is urgent and a deadline is set. Returns plain email body text — no JSON, no markdown fences expected.
+
+**External services:** Anthropic API (`claude-haiku-4-5-20251001`, temperature=0).
+
+**What calls it:** `api/procurement.py` (POST /procurement/jobs — generates outreach email on job creation).
+
+---
+
+## backend/app/agents/response_simulator.py
+
+**What it does:** Simulates a vendor's email reply using Claude Haiku. Derives the vendor's communication tone from their `type` field (formal for OE Manufacturers, terse for OE truck-stop vendors, casual for Aftermarket). Calculates `P(field_missing) = (1 - response_rate) × 0.6` per field and randomly omits fields to exercise the follow-up path. Passes field values and omission list to Haiku so the reply is realistic but intentionally incomplete for lower-rated vendors.
+
+**External services:** Anthropic API (`claude-haiku-4-5-20251001`, temperature=0).
+
+**What calls it:** `workers/job_processor.py` when a job's `respond_at` passes.
+
+---
+
+## backend/app/agents/email_parser.py
+
+**What it does:** Extracts four structured fields from a vendor email using Claude Haiku: `availability_status`, `unit_price` (float), `quantity_available` (int), `estimated_delivery_date` (string). Returns a dict with a `missing_fields` list for any fields that were null. Uses the same markdown-fence-strip + `json.loads` pattern as `pipeline/intent.py`.
+
+**External services:** Anthropic API (`claude-haiku-4-5-20251001`, temperature=0).
+
+**What calls it:** `workers/job_processor.py` after `simulate_vendor_response` or a real follow-up response is received.
+
+---
+
+## backend/app/agents/followup_generator.py
+
+**What it does:** Generates a follow-up email when the parsed vendor response is missing required fields. Passes the original outreach, the vendor's reply, and human-readable labels for each missing field to Claude Haiku. Returns plain email body text for the operator to review and edit before sending.
+
+**External services:** Anthropic API (`claude-haiku-4-5-20251001`, temperature=0).
+
+**What calls it:** `workers/job_processor.py` when `parse_vendor_response` returns non-empty `missing_fields`.
+
+---
+
+## backend/app/agents/ranker.py
+
+**What it does:** Pure Python. Computes a composite ranking score from three inputs: `price_score = 1 - (unit_price / max_catalog_price)`, `delivery_score = 1 - (delivery_hours / 480)` (480h = 20-day ceiling), weighted `0.4 / 0.4 / 0.2` with `response_rate`. Output is clamped to [0, 1].
+
+**External services:** None.
+
+**What calls it:** `workers/job_processor.py` when a job transitions to `confirmed` and `ranking_score` is null.
+
+---
+
+## backend/app/db/supabase.py (vendor outreach extensions)
+
+**What it does:** Nine new async functions added after the existing parts/orders/vin helpers. `fetch_vendors_for_part` joins `vendor_parts` + `vendors` inline via PostgREST foreign key syntax and filters to in-stock rows only. `insert_procurement_job` and `update_procurement_job` handle job creation and partial field updates. `fetch_procurement_jobs` and `fetch_procurement_job` embed the related vendor record for job board display. `fetch_pending_simulations` pulls jobs in `outreach_sent` or `follow_up_sent` whose `respond_at <= now()` and also joins `vendor_parts` so the worker has pricing and delivery data. `fetch_confirmed_unranked` uses `.is_("ranking_score", "null")` for the Postgres IS NULL check. `insert_procurement_event` and `fetch_job_events` manage the immutable transition log.
+
+**External services:** Supabase Postgres (`vendor_parts`, `vendors`, `procurement_jobs`, `procurement_events` tables).
+
+**What calls it:** `api/vendors.py`, `api/procurement.py`, `workers/job_processor.py`.
+
+---
+
+## Batch 11 — Frontend Integration
+
+### frontend/src/components/SearchBar.tsx (edited)
+
+**What changed:** Added `urgency_deadline: string | null` as fourth param to the `onSearch` prop. Added `urgencyDeadline` state (empty string default). Clicking "Urgent" now calls `handleSetUrgent()` which pre-fills the deadline to now+2h if not already set. A `datetime-local` input with an orange border appears below the urgency toggle when urgent is active; the `min` attribute is recomputed from `minDeadline()` on every render to prevent past dates. On submit, passes the deadline as the fourth arg (null when standard).
+
+**External services:** None.
+
+**What calls it:** `SearchPage.tsx`.
+
+---
+
+### frontend/src/pages/SearchPage.tsx (edited)
+
+**What changed:** `onSearch` callback now accepts the fourth `urgency_deadline` parameter and includes it in the navigate state: `{ vin, query, urgency, urgency_deadline }`.
+
+**External services:** None.
+
+**What calls it:** `SearchBar.tsx` via `onSearch` prop.
+
+---
+
+### frontend/src/pages/ResultsPage.tsx (edited)
+
+**What changed:**
+- `LocationState` extended with `urgency_deadline: string | null`
+- Imports added: `createProcurementJob` from `api/procurement`, `VendorSelector`, `OutreachConfirm` components, `VendorPart`/`ProcurementJob` types
+- Three new state vars: `procureTarget` (the part being procured), `selectedVendorPart` (vendor chosen in selector), `procurementJob` (job created via API), `procureDeadline`
+- "Procurement" nav link added to header alongside "Orders"
+- `PartDetail` now receives `onProcure` which sets `procureTarget`, `procureDeadline`, closes the detail panel
+- `VendorSelector` modal mounts when `procureTarget` is set and no vendor chosen yet; on select, calls `createProcurementJob` to create the job and transitions to `OutreachConfirm`
+- `OutreachConfirm` modal mounts when `procurementJob` and `selectedVendorPart` are both set; on confirm (after `sendOutreach` inside the component), navigates to `/procurement` and clears all procure state
+
+**Flow:** PartDetail "Procure →" → VendorSelector → `createProcurementJob` → OutreachConfirm → `sendOutreach` (inside OutreachConfirm) → navigate("/procurement")
+
+**External services:** Supabase via API (`POST /procurement/jobs`, `POST /procurement/jobs/{id}/send`).
+
+**What calls it:** User click from `PartDetail` footer.
+
+---

@@ -10,10 +10,11 @@ const CONF_STYLES: Record<FitmentConfidence, string> = {
 interface Props {
   result: SearchResultPart
   onOrder: () => void
+  onProcure: () => void
   onClose: () => void
 }
 
-export default function PartDetail({ result, onOrder, onClose }: Props) {
+export default function PartDetail({ result, onOrder, onProcure, onClose }: Props) {
   const { part, fitment } = result
   const attrs = Object.entries(part.attributes).filter(([, v]) => v != null && v !== "")
 
@@ -120,12 +121,18 @@ export default function PartDetail({ result, onOrder, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 px-6 py-5">
+        <div className="sticky bottom-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 px-6 py-5 flex gap-3">
           <button
             onClick={onOrder}
-            className="w-full py-3.5 bg-orange-500 text-white text-base font-bold rounded-xl hover:bg-orange-400 active:scale-[0.98] transition-all duration-100 shadow-lg shadow-orange-500/20"
+            className="flex-1 py-3.5 bg-zinc-800 border border-zinc-700 text-white text-sm font-bold rounded-xl hover:bg-zinc-700 active:scale-[0.98] transition-all duration-100"
           >
-            Order This Part →
+            Order This Part
+          </button>
+          <button
+            onClick={onProcure}
+            className="flex-1 py-3.5 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-400 active:scale-[0.98] transition-all duration-100 shadow-lg shadow-orange-500/20"
+          >
+            Procure →
           </button>
         </div>
       </div>
