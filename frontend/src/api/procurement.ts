@@ -16,6 +16,9 @@ export const sendOutreach = (id: string) =>
 export const sendFollowup = (id: string, follow_up_email?: string) =>
   apiPost<ProcurementJob>(`/procurement/jobs/${id}/followup`, { follow_up_email })
 
+export const confirmParsedFields = (id: string) =>
+  apiPost<ProcurementJob>(`/procurement/jobs/${id}/confirm`, {})
+
 export const acceptJob = (id: string) =>
   apiPost<ProcurementJob>(`/procurement/jobs/${id}/accept`, {})
 

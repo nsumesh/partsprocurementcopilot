@@ -156,6 +156,29 @@ async def send_followup(job_id: str, body: FollowUpBody, request: Request):
     return ProcurementJob(**updated)
 
 
+@router.post("/jobs/{job_id}/confirm", response_model=ProcurementJob)
+async def confirm_parsed(job_id: str, request: Request):
+    supabase = request.app.state.supabase
+    job = await fetch_procurement_job(supabase, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] != "parsed":
+        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'parsed'")
+
+    updated = await update_procurement_job(supabase, job_id, {
+        "status": "confirmed",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await insert_procurement_event(supabase, {
+        "job_id": job_id,
+        "from_status": "parsed",
+        "to_status": "confirmed",
+        "actor": "user",
+        "metadata": {},
+    })
+    return ProcurementJob(**updated)
+
+
 @router.post("/jobs/{job_id}/accept", response_model=ProcurementJob)
 async def accept_job(job_id: str, request: Request):
     supabase = request.app.state.supabase

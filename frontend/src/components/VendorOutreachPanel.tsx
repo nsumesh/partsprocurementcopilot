@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { acceptJob, rejectJob, sendFollowup } from "../api/procurement"
+import { acceptJob, confirmParsedFields, rejectJob, sendFollowup } from "../api/procurement"
 import type { ProcurementJob } from "../types"
 
 interface Props {
@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
   created:              "Created",
   outreach_sent:        "Awaiting Response",
   response_received:    "Response Received",
-  parsed:               "Parsed",
+  parsed:               "Awaiting Confirmation",
   follow_up_required:   "Follow-Up Required",
   follow_up_sent:       "Awaiting Follow-Up Response",
   confirmed:            "Confirmed",
@@ -25,7 +25,7 @@ const STATUS_COLOR: Record<string, string> = {
   created:              "bg-zinc-700 text-zinc-300",
   outreach_sent:        "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/25",
   response_received:    "bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/25",
-  parsed:               "bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/25",
+  parsed:               "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/25",
   follow_up_required:   "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/25",
   follow_up_sent:       "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/25",
   confirmed:            "bg-green-500/10 text-green-400 ring-1 ring-green-500/25",
@@ -79,7 +79,7 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
 
   const maxPrice = Math.max(job.parsed_unit_price ?? 0, 500)
   const priceScore  = job.parsed_unit_price != null ? 1 - job.parsed_unit_price / maxPrice : null
-  const deliveryScore = job.parsed_delivery_hours != null ? 1 - job.parsed_delivery_hours / 480 : null
+  const deliveryScore = job.parsed_delivery_hours != null ? 1 - job.parsed_delivery_hours / 720 : null
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
@@ -189,6 +189,23 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
                   </div>
                 ))}
               </dl>
+            </section>
+          )}
+
+          {/* Human-in-the-loop confirmation */}
+          {job.status === "parsed" && (
+            <section className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-4">
+              <p className="text-sm font-bold text-yellow-400 mb-1">Review required</p>
+              <p className="text-xs text-zinc-400 mb-4">
+                All fields parsed successfully. Review the response and parsed data above, then confirm to proceed to ranking.
+              </p>
+              <button
+                onClick={() => act(() => confirmParsedFields(job.id))}
+                disabled={acting}
+                className="w-full py-3 bg-yellow-500 text-zinc-900 text-sm font-bold rounded-xl hover:bg-yellow-400 disabled:opacity-40 active:scale-[0.98] transition-all"
+              >
+                {acting ? "Confirming…" : "Confirm & Proceed to Ranking →"}
+              </button>
             </section>
           )}
 

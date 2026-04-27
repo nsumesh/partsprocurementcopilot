@@ -88,7 +88,7 @@ async def _run_simulation(client, anthropic: AsyncAnthropic, job: dict) -> None:
             "follow_up_email": follow_up_email,
         })
     else:
-        new_status = "confirmed"
+        new_status = "parsed"
         await update_procurement_job(client, job["id"], {
             **base_fields,
             "status": new_status,
