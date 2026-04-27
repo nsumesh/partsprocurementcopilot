@@ -456,3 +456,31 @@ CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.conf.templ
 ```
 `envsubst` is scoped explicitly to `${PORT}` only — passing the variable list prevents `envsubst` from clobbering nginx's own `$uri`, `$host`, and other internal variables used in `try_files` and `location` blocks.
 
+
+---
+
+### Error 21 — Clarifying question banner sent user back to search instead of re-searching inline
+
+**File:** `frontend/src/pages/ResultsPage.tsx`
+
+**Root cause:** When the backend emitted a `clarify` SSE event, the UI set `clarifyQuestion` state and rendered a banner with a "← Refine your search" button that called `navigate("/")`. There was no input field and no way to answer the question — the only action was abandoning the results page entirely.
+
+**Fix applied:** Added `clarifyAnswer` state and replaced the back button with an inline form: an autofocused text input and a "Search →" submit button. `handleClarifySubmit` aborts any live stream, resets results/error state, and re-calls `streamSearch` with the amended query `"${state.query} — ${answer}"` so the backend receives the original intent plus the clarification in one shot.
+
+---
+
+### Error 22 — Jobs stalling at `confirmed` — `_rank_job` silently bailed when `parsed_delivery_hours` was null
+
+**Files:** `backend/app/workers/job_processor.py`, `backend/app/agents/ranker.py`
+
+**Root cause:** Two compounding issues:
+1. `_rank_job` had an early `return` when `delivery_hours is None`, leaving jobs permanently at `confirmed` with no event logged and no indication of why.
+2. `parsed_delivery_hours` was sourced exclusively from `vendor_part.get("delivery_hours")`. If `fetch_vendor_part` returned an empty dict (e.g. no matching row), the value was `None`. Additionally, the LLM-parsed `parsed_delivery_date` text (e.g. `"~20 days from order"`) was never converted to an integer and therefore contributed nothing to ranking.
+
+**Fix applied:**
+- Added `delivery_text_to_hours(text: str | None) -> int | None` to `ranker.py`. Uses ordered regex patterns to parse common delivery phrases: `"same day"→2h`, `"next business day"→24h`, `"N hours"→N`, `"N-M business days"→avg×24`, `"N weeks"→N×168`, `"N days"→N×24`. Ordered most-specific first to prevent `"next business day"` matching the generic `"day"` pattern.
+- `_rank_job` now has a three-level fallback:
+  1. `parsed_delivery_hours` (seeded integer from vendor_parts)
+  2. `delivery_text_to_hours(parsed_delivery_date)` (parse the LLM text)
+  3. `_DELIVERY_CEILING_HOURS` (480h = 20 days worst-case default)
+- `unit_price is None` still causes an early return (no price = can't score), but missing delivery data no longer blocks ranking.

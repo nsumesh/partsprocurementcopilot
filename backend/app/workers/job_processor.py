@@ -62,6 +62,8 @@ async def _run_simulation(client, anthropic: AsyncAnthropic, job: dict) -> None:
     missing = parsed.get("missing_fields") or []
 
     delivery_hours = vendor_part.get("delivery_hours")
+    if delivery_hours is None:
+        delivery_hours = delivery_text_to_hours(parsed.get("estimated_delivery_date"))
     base_fields = {
         "response_email": response_email,
         "parsed_availability": parsed.get("availability_status"),

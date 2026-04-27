@@ -1,6 +1,6 @@
 import re
 
-_DELIVERY_CEILING_HOURS = 480  # 20 days
+_DELIVERY_CEILING_HOURS = 720  # 30 days — ceiling above any realistic delivery so 20-day options still score above 0
 
 # Ordered most-specific first so "next business day" beats "day"
 _DELIVERY_PATTERNS: list[tuple[re.Pattern, int]] = [
