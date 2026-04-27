@@ -63,6 +63,7 @@ export default function ResultsPage() {
   const [results, setResults] = useState<SearchResultPart[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [clarifyQuestion, setClarifyQuestion] = useState<string | null>(null)
+  const [clarifyAnswer, setClarifyAnswer] = useState("")
   const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedResult, setSelectedResult] = useState<SearchResultPart | null>(null)
   const [confirmTarget, setConfirmTarget] = useState<SearchResultPart | null>(null)
@@ -87,6 +88,25 @@ export default function ResultsPage() {
     )
     return () => { abortRef.current?.abort() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleClarifySubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const answer = clarifyAnswer.trim()
+    if (!answer || !state) return
+    abortRef.current?.abort()
+    setResults([])
+    setSearchError(null)
+    setClarifyQuestion(null)
+    setClarifyAnswer("")
+    setIsStreaming(true)
+    abortRef.current = streamSearch(
+      { vin: state.vin, query: `${state.query} — ${answer}`, urgency: state.urgency },
+      part => setResults(prev => [...prev, part]),
+      question => { setResults([]); setClarifyQuestion(question); setIsStreaming(false) },
+      () => setIsStreaming(false),
+      msg => { setSearchError(msg); setIsStreaming(false) },
+    )
+  }
 
   if (!state) return null
 
@@ -162,16 +182,24 @@ export default function ResultsPage() {
         <main className="flex-1 min-w-0">
           {clarifyQuestion && (
             <div className="bg-orange-500/10 border border-orange-500/25 rounded-xl px-5 py-4 mb-5 animate-fade-in">
-              <p className="text-sm text-orange-300">
-                <span className="font-bold text-orange-400">Clarification needed: </span>
-                {clarifyQuestion}
-              </p>
-              <button
-                onClick={() => navigate("/")}
-                className="mt-3 text-xs font-bold text-orange-500 hover:text-orange-400 transition-colors"
-              >
-                ← Refine your search
-              </button>
+              <p className="text-sm font-bold text-orange-400 mb-1">Clarification needed</p>
+              <p className="text-sm text-orange-300 mb-3">{clarifyQuestion}</p>
+              <form onSubmit={handleClarifySubmit} className="flex gap-2">
+                <input
+                  autoFocus
+                  value={clarifyAnswer}
+                  onChange={e => setClarifyAnswer(e.target.value)}
+                  placeholder="Type your answer…"
+                  className="flex-1 px-3 py-2 bg-zinc-800 border border-orange-500/40 rounded-lg text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!clarifyAnswer.trim()}
+                  className="px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-400 disabled:opacity-40 transition-colors"
+                >
+                  Search →
+                </button>
+              </form>
             </div>
           )}
 

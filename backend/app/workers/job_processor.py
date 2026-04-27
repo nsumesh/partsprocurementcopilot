@@ -5,7 +5,7 @@ from anthropic import AsyncAnthropic
 
 from app.agents.email_parser import parse_vendor_response
 from app.agents.followup_generator import generate_followup_email
-from app.agents.ranker import compute_ranking_score
+from app.agents.ranker import compute_ranking_score, delivery_text_to_hours, _DELIVERY_CEILING_HOURS
 from app.agents.response_simulator import simulate_vendor_response
 from app.config import get_settings
 from app.db.supabase import (
@@ -116,8 +116,14 @@ async def _rank_job(client, job: dict) -> None:
     vendor = job.get("vendor") or {}
     response_rate = float(vendor.get("response_rate", 0.75))
 
-    if unit_price is None or delivery_hours is None:
+    if unit_price is None:
         return
+
+    # Fall back to parsing the delivery date text, then worst-case ceiling
+    if delivery_hours is None:
+        delivery_hours = delivery_text_to_hours(job.get("parsed_delivery_date"))
+    if delivery_hours is None:
+        delivery_hours = _DELIVERY_CEILING_HOURS
 
     score = compute_ranking_score(
         unit_price=float(unit_price),
