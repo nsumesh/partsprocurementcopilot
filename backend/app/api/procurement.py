@@ -26,6 +26,13 @@ class FollowUpBody(BaseModel):
     follow_up_email: str | None = None
 
 
+async def _fetch_job(supabase, job_id: str) -> ProcurementJob:
+    row = await fetch_procurement_job(supabase, job_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return ProcurementJob(**row)
+
+
 def _respond_at(response_rate: float) -> datetime:
     now = datetime.now(timezone.utc)
     if response_rate >= 0.85:
@@ -110,7 +117,7 @@ async def send_outreach(job_id: str, request: Request):
     vendor = job.get("vendor") or {}
     respond_at = _respond_at(float(vendor.get("response_rate", 0.75)))
 
-    updated = await update_procurement_job(supabase, job_id, {
+    await update_procurement_job(supabase, job_id, {
         "status": "outreach_sent",
         "respond_at": respond_at.isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -122,7 +129,7 @@ async def send_outreach(job_id: str, request: Request):
         "actor": "user",
         "metadata": {"respond_at": respond_at.isoformat()},
     })
-    return ProcurementJob(**updated)
+    return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/followup", response_model=ProcurementJob)
@@ -145,7 +152,7 @@ async def send_followup(job_id: str, body: FollowUpBody, request: Request):
     if body.follow_up_email:
         fields["follow_up_email"] = body.follow_up_email
 
-    updated = await update_procurement_job(supabase, job_id, fields)
+    await update_procurement_job(supabase, job_id, fields)
     await insert_procurement_event(supabase, {
         "job_id": job_id,
         "from_status": "follow_up_required",
@@ -153,7 +160,7 @@ async def send_followup(job_id: str, body: FollowUpBody, request: Request):
         "actor": "user",
         "metadata": {"respond_at": respond_at.isoformat()},
     })
-    return ProcurementJob(**updated)
+    return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/confirm", response_model=ProcurementJob)
@@ -165,7 +172,7 @@ async def confirm_parsed(job_id: str, request: Request):
     if job["status"] != "parsed":
         raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'parsed'")
 
-    updated = await update_procurement_job(supabase, job_id, {
+    await update_procurement_job(supabase, job_id, {
         "status": "confirmed",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -176,7 +183,7 @@ async def confirm_parsed(job_id: str, request: Request):
         "actor": "user",
         "metadata": {},
     })
-    return ProcurementJob(**updated)
+    return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/accept", response_model=ProcurementJob)
@@ -188,7 +195,7 @@ async def accept_job(job_id: str, request: Request):
     if job["status"] != "ranked":
         raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'ranked'")
 
-    updated = await update_procurement_job(supabase, job_id, {
+    await update_procurement_job(supabase, job_id, {
         "status": "accepted",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -199,7 +206,7 @@ async def accept_job(job_id: str, request: Request):
         "actor": "user",
         "metadata": {},
     })
-    return ProcurementJob(**updated)
+    return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/reject", response_model=ProcurementJob)
@@ -211,7 +218,7 @@ async def reject_job(job_id: str, request: Request):
     if job["status"] != "ranked":
         raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'ranked'")
 
-    updated = await update_procurement_job(supabase, job_id, {
+    await update_procurement_job(supabase, job_id, {
         "status": "rejected",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -222,4 +229,4 @@ async def reject_job(job_id: str, request: Request):
         "actor": "user",
         "metadata": {},
     })
-    return ProcurementJob(**updated)
+    return await _fetch_job(supabase, job_id)

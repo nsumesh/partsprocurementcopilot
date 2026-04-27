@@ -484,3 +484,38 @@ CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.conf.templ
   2. `delivery_text_to_hours(parsed_delivery_date)` (parse the LLM text)
   3. `_DELIVERY_CEILING_HOURS` (480h = 20 days worst-case default)
 - `unit_price is None` still causes an early return (no price = can't score), but missing delivery data no longer blocks ranking.
+
+---
+
+### Error 23 — Delivery score always 0% when vendor responds with "20 days"
+
+**File:** `backend/app/agents/ranker.py`
+
+**Root cause:** `_DELIVERY_CEILING_HOURS` was set to 480 (20 days). Any vendor responding with a 20-day delivery time would produce `delivery_score = 1 - 480/480 = 0`, contributing nothing to the composite score. This was correct math but wrong ceiling — the ceiling should represent an unacceptably slow delivery beyond all real options, not equal to the worst real option.
+
+**Fix applied:** Raised `_DELIVERY_CEILING_HOURS` from 480 to 720 (30 days). 20-day delivery now scores 33% on the delivery dimension. Full scale: 2h→100%, next business day→97%, 1 week→77%, 2 weeks→53%, 20 days→33%.
+
+---
+
+### Error 24 — Procurement jobs stuck at `parsed` with no UI button to advance
+
+**Files:** `frontend/src/components/VendorOutreachPanel.tsx`
+
+**Root cause:** The "Confirm & Proceed to Ranking" button was placed in the scrollable body section, below the vendor info block, the full outreach email, the vendor response email, and the parsed fields table. Users would see the `parsed` status badge in the header but never scroll far enough to find the button. The `accept/reject` buttons for `ranked` jobs were in a sticky footer — `parsed` needed the same treatment.
+
+**Fix applied:** Removed the button from the body. Kept a minimal yellow notice in the body for context ("All fields parsed. Review above, then confirm below."). Moved the action button to the sticky footer, matching the `ranked` pattern. Footer now conditionally renders either the yellow "Confirm & Proceed to Ranking →" button (for `parsed`) or the Reject/Accept pair (for `ranked`).
+
+---
+
+### Error 25 — Response rate bar missing from Ranking Score section
+
+**Files:** `backend/app/api/procurement.py`, `frontend/src/pages/ProcurementBoard.tsx`
+
+**Root cause:** Two compounding issues:
+1. All action endpoints (`/send`, `/confirm`, `/followup`, `/accept`, `/reject`) returned `ProcurementJob(**updated)` where `updated` came from `update_procurement_job` — a raw Supabase `.update().execute()` response containing only DB columns, no joined data. So `vendor` was `None` in the response.
+2. `handleJobUpdate` in `ProcurementBoard` called `setSelected(updated)` — a full replacement — so the vendor data from the initial `getProcurementJobs` fetch was lost. Subsequent Realtime merges (`{ ...prev, ...realtimePayload }`) couldn't recover it since Realtime payloads also contain no joined data.
+3. The response rate `ScoreBar` was gated on `{job.vendor && ...}`, so it silently disappeared whenever vendor was null.
+
+**Fix applied:**
+- Added `_fetch_job(supabase, job_id)` helper in `procurement.py` that calls `fetch_procurement_job` (which includes `vendor:vendors(*)` join) after every update. All five action endpoints now return `await _fetch_job(supabase, job_id)` instead of `ProcurementJob(**updated)`.
+- Changed `handleJobUpdate` in `ProcurementBoard` to use spread-merge: `setJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j))` and `setSelected(prev => prev ? { ...prev, ...updated } : updated)`. This ensures vendor, events, and any other joined data is never clobbered by a partial update response.
