@@ -192,20 +192,13 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
             </section>
           )}
 
-          {/* Human-in-the-loop confirmation */}
+          {/* Human-in-the-loop review notice */}
           {job.status === "parsed" && (
-            <section className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-4">
+            <section className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3">
               <p className="text-sm font-bold text-yellow-400 mb-1">Review required</p>
-              <p className="text-xs text-zinc-400 mb-4">
-                All fields parsed successfully. Review the response and parsed data above, then confirm to proceed to ranking.
+              <p className="text-xs text-zinc-400">
+                All fields parsed. Review the vendor response and parsed data above, then confirm below to proceed to ranking.
               </p>
-              <button
-                onClick={() => act(() => confirmParsedFields(job.id))}
-                disabled={acting}
-                className="w-full py-3 bg-yellow-500 text-zinc-900 text-sm font-bold rounded-xl hover:bg-yellow-400 disabled:opacity-40 active:scale-[0.98] transition-all"
-              >
-                {acting ? "Confirming…" : "Confirm & Proceed to Ranking →"}
-              </button>
             </section>
           )}
 
@@ -250,23 +243,36 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
           )}
         </div>
 
-        {/* Footer — accept/reject */}
-        {job.status === "ranked" && (
+        {/* Sticky footer — action buttons */}
+        {(job.status === "parsed" || job.status === "ranked") && (
           <div className="sticky bottom-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 px-6 py-5 flex gap-3">
-            <button
-              onClick={() => act(() => rejectJob(job.id))}
-              disabled={acting}
-              className="flex-1 py-3 bg-zinc-800 border border-zinc-700 text-sm font-bold text-zinc-300 rounded-xl hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 disabled:opacity-40 transition-all"
-            >
-              Reject
-            </button>
-            <button
-              onClick={() => act(() => acceptJob(job.id))}
-              disabled={acting}
-              className="flex-1 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-400 disabled:opacity-40 active:scale-[0.98] transition-all shadow-lg shadow-orange-500/20"
-            >
-              {acting ? "Updating…" : "Accept →"}
-            </button>
+            {job.status === "parsed" && (
+              <button
+                onClick={() => act(() => confirmParsedFields(job.id))}
+                disabled={acting}
+                className="flex-1 py-3.5 bg-yellow-500 text-zinc-900 text-sm font-bold rounded-xl hover:bg-yellow-400 disabled:opacity-40 active:scale-[0.98] transition-all shadow-lg shadow-yellow-500/20"
+              >
+                {acting ? "Confirming…" : "Confirm & Proceed to Ranking →"}
+              </button>
+            )}
+            {job.status === "ranked" && (
+              <>
+                <button
+                  onClick={() => act(() => rejectJob(job.id))}
+                  disabled={acting}
+                  className="flex-1 py-3 bg-zinc-800 border border-zinc-700 text-sm font-bold text-zinc-300 rounded-xl hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 disabled:opacity-40 transition-all"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={() => act(() => acceptJob(job.id))}
+                  disabled={acting}
+                  className="flex-1 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-400 disabled:opacity-40 active:scale-[0.98] transition-all shadow-lg shadow-orange-500/20"
+                >
+                  {acting ? "Updating…" : "Accept →"}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
