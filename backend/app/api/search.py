@@ -59,11 +59,12 @@ async def _pipeline(request: SearchRequest, app_request: Request, settings: Sett
         ]
         final_parts = category_matched if category_matched else reranked
 
-        fitments = await asyncio.gather(
-            *[assign_fitment(p, vin_spec, model, anthropic) for p in final_parts]
-        )
+        async def _fitment(i: int, p: Part):
+            return i, p, await assign_fitment(p, vin_spec, model, anthropic)
 
-        for index, (part, fitment) in enumerate(zip(final_parts, fitments)):
+        tasks = [asyncio.create_task(_fitment(i, p)) for i, p in enumerate(final_parts)]
+        for coro in asyncio.as_completed(tasks):
+            index, part, fitment = await coro
             yield sse_part(index, part, fitment)
 
         yield sse_done()
