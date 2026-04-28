@@ -50,7 +50,14 @@ async def _pipeline(request: SearchRequest, app_request: Request, settings: Sett
 
         reranked = await rerank(request.query, parts, co)
 
-        for index, part in enumerate(reranked):
+        intent_cat = intent.part_category.lower().replace("_", " ").replace("-", " ")
+        category_matched = [
+            p for p in reranked
+            if intent_cat in p.category.lower() or p.category.lower() in intent_cat
+        ]
+        final_parts = category_matched if category_matched else reranked
+
+        for index, part in enumerate(final_parts):
             fitment = await assign_fitment(part, vin_spec, model, anthropic)
             yield sse_part(index, part, fitment)
 
