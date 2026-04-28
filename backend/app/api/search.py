@@ -1,3 +1,5 @@
+import asyncio
+
 import cohere
 from anthropic import AsyncAnthropic
 from fastapi import APIRouter, Depends, Request
@@ -57,8 +59,11 @@ async def _pipeline(request: SearchRequest, app_request: Request, settings: Sett
         ]
         final_parts = category_matched if category_matched else reranked
 
-        for index, part in enumerate(final_parts):
-            fitment = await assign_fitment(part, vin_spec, model, anthropic)
+        fitments = await asyncio.gather(
+            *[assign_fitment(p, vin_spec, model, anthropic) for p in final_parts]
+        )
+
+        for index, (part, fitment) in enumerate(zip(final_parts, fitments)):
             yield sse_part(index, part, fitment)
 
         yield sse_done()
