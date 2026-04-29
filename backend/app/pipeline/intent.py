@@ -15,7 +15,7 @@ Respond with a single JSON object — no markdown, no explanation:
   "is_ambiguous": <true|false>
 }
 Set is_ambiguous=true ONLY when the query gives no recognizable part category at all —
-for example "something is wrong" or "I need a part". If the query names any specific part
+for example "something is wrong" or "I need a part" or "I need something". A part is considered recognizable if it can be mapped to a known category.
 type (e.g. "oil filter", "slack adjuster", "brake shoe", "air filter", "water pump"),
 always set is_ambiguous=false even if variants exist. Variant selection is handled downstream.
 When is_ambiguous=true, set clarifying_question to a single short question."""
