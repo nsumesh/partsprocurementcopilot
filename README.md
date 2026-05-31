@@ -4,8 +4,7 @@ An AI-powered parts procurement tool for heavy-duty fleet operators. Enter a VIN
 
 **Live:** https://frontend-production-bc15.up.railway.app
 
-(Deployment inactive at the moment, however railway files exist for deployment at any point)
----
+(Deployment not active at the moment, however railway files exist to deploy at any point of time)
 
 ## What it does
 
