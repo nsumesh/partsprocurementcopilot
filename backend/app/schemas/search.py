@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.parts import FitmentResult, Part
 
@@ -15,9 +16,12 @@ class VINSpec(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    vin: str
-    query: str
+    vin: str = Field(min_length=1, max_length=17)
+    # Bounded — the query is interpolated into LLM prompts, so an unbounded string is
+    # an unbounded token cost
+    query: str = Field(min_length=1, max_length=500)
     urgency: Literal["standard", "urgent"] = "standard"
+    urgency_deadline: datetime | None = None
 
 
 class IntentResult(BaseModel):

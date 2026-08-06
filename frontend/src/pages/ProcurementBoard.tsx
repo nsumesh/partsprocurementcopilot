@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getProcurementJobs } from "../api/procurement"
@@ -6,10 +7,26 @@ import ProcurementJobRow from "../components/ProcurementJobRow"
 import VendorOutreachPanel from "../components/VendorOutreachPanel"
 import type { ProcurementJob } from "../types"
 
-const supabase = createClient(
-  (import.meta.env.VITE_SUPABASE_URL as string) ?? "",
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "",
-)
+// Lazily constructed so a missing env var degrades gracefully instead of
+// throwing at module load and white-screening the whole SPA.
+let supabaseClient: SupabaseClient | null = null
+let supabaseInitialized = false
+
+function getSupabase(): SupabaseClient | null {
+  if (!supabaseInitialized) {
+    supabaseInitialized = true
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (url && anonKey) {
+      try {
+        supabaseClient = createClient(url, anonKey)
+      } catch {
+        supabaseClient = null
+      }
+    }
+  }
+  return supabaseClient
+}
 
 export default function ProcurementBoard() {
   const navigate = useNavigate()
@@ -17,6 +34,7 @@ export default function ProcurementBoard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<ProcurementJob | null>(null)
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false)
 
   useEffect(() => {
     getProcurementJobs()
@@ -24,20 +42,28 @@ export default function ProcurementBoard() {
       .catch(() => setError("Failed to load jobs"))
       .finally(() => setLoading(false))
 
+    const supabase = getSupabase()
+    if (!supabase) {
+      setRealtimeUnavailable(true)
+      return
+    }
+
     const channel = supabase
       .channel("procurement_jobs_realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "procurement_jobs" },
         payload => {
-          const updated = payload.new as ProcurementJob
-          if (!updated?.id) return
+          // Realtime payloads are raw Postgres rows — no vendor join, no events array.
+          const raw = payload.new as ProcurementJob | undefined
+          if (!raw?.id) return
           setJobs(prev => {
-            const exists = prev.some(j => j.id === updated.id)
-            if (exists) return prev.map(j => j.id === updated.id ? { ...j, ...updated } : j)
-            return [updated, ...prev]
+            const exists = prev.some(j => j.id === raw.id)
+            if (exists) return prev.map(j => j.id === raw.id ? { ...j, ...raw } : j)
+            const inserted: ProcurementJob = { ...raw, events: raw.events ?? [], vendor: raw.vendor ?? null }
+            return [inserted, ...prev]
           })
-          setSelected(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev)
+          setSelected(prev => prev?.id === raw.id ? { ...prev, ...raw } : prev)
         }
       )
       .subscribe()
@@ -80,6 +106,11 @@ export default function ProcurementBoard() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-7">
+        {realtimeUnavailable && (
+          <div className="mb-5 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3 text-sm text-amber-400">
+            Realtime updates unavailable — Supabase env vars not configured
+          </div>
+        )}
         {loading && (
           <div className="text-sm text-zinc-500 py-16 text-center">Loading jobs…</div>
         )}

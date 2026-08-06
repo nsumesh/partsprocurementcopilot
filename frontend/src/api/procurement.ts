@@ -10,8 +10,11 @@ export const getProcurementJobs = () =>
 export const getProcurementJob = (id: string) =>
   apiGet<ProcurementJob>(`/procurement/jobs/${id}`)
 
-export const sendOutreach = (id: string) =>
-  apiPost<ProcurementJob>(`/procurement/jobs/${id}/send`, {})
+export const sendOutreach = (id: string, outreachEmail?: string) =>
+  apiPost<ProcurementJob>(
+    `/procurement/jobs/${id}/send`,
+    outreachEmail !== undefined ? { outreach_email: outreachEmail } : {},
+  )
 
 export const sendFollowup = (id: string, follow_up_email?: string) =>
   apiPost<ProcurementJob>(`/procurement/jobs/${id}/followup`, { follow_up_email })

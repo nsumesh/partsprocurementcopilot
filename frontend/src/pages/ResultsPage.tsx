@@ -71,6 +71,7 @@ export default function ResultsPage() {
   const [selectedVendorPart, setSelectedVendorPart] = useState<VendorPart | null>(null)
   const [procurementJob, setProcurementJob] = useState<ProcurementJob | null>(null)
   const [procureDeadline, setProcureDeadline] = useState<string | null>(null)
+  const [procureError, setProcureError] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
 
   useEffect(() => {
@@ -80,8 +81,8 @@ export default function ResultsPage() {
     }
     setIsStreaming(true)
     abortRef.current = streamSearch(
-      { vin: state.vin, query: state.query, urgency: state.urgency },
-      part => setResults(prev => [...prev, part]),
+      { vin: state.vin, query: state.query, urgency: state.urgency, urgency_deadline: state.urgency_deadline ?? null },
+      part => setResults(prev => [...prev, part].sort((a, b) => a.index - b.index)),
       question => { setResults([]); setClarifyQuestion(question); setIsStreaming(false) },
       () => setIsStreaming(false),
       msg => { setSearchError(msg); setIsStreaming(false) },
@@ -100,8 +101,8 @@ export default function ResultsPage() {
     setClarifyAnswer("")
     setIsStreaming(true)
     abortRef.current = streamSearch(
-      { vin: state.vin, query: `${state.query} — ${answer}`, urgency: state.urgency },
-      part => setResults(prev => [...prev, part]),
+      { vin: state.vin, query: `${state.query} — ${answer}`, urgency: state.urgency, urgency_deadline: state.urgency_deadline ?? null },
+      part => setResults(prev => [...prev, part].sort((a, b) => a.index - b.index)),
       question => { setResults([]); setClarifyQuestion(question); setIsStreaming(false) },
       () => setIsStreaming(false),
       msg => { setSearchError(msg); setIsStreaming(false) },
@@ -304,27 +305,40 @@ export default function ResultsPage() {
       )}
 
       {procureTarget && !selectedVendorPart && (
-        <VendorSelector
-          part={procureTarget.part}
-          urgency={state.urgency}
-          urgencyDeadline={procureDeadline}
-          onSelect={async (vendorPart, deadline) => {
-            setSelectedVendorPart(vendorPart)
-            setProcureDeadline(deadline)
-            const job = await createProcurementJob({
-              part_id: procureTarget.part.id,
-              vendor_id: vendorPart.vendor_id,
-              part_number: procureTarget.part.part_number,
-              part_name: procureTarget.part.name,
-              vin: state.vin,
-              query: state.query,
-              urgency: state.urgency,
-              urgency_deadline: deadline,
-            })
-            setProcurementJob(job)
-          }}
-          onClose={() => setProcureTarget(null)}
-        />
+        <>
+          <VendorSelector
+            part={procureTarget.part}
+            urgency={state.urgency}
+            urgencyDeadline={procureDeadline}
+            onSelect={async (vendorPart, deadline) => {
+              setProcureDeadline(deadline)
+              setProcureError(null)
+              try {
+                const job = await createProcurementJob({
+                  part_id: procureTarget.part.id,
+                  vendor_id: vendorPart.vendor_id,
+                  part_number: procureTarget.part.part_number,
+                  part_name: procureTarget.part.name,
+                  vin: state.vin,
+                  query: state.query,
+                  urgency: state.urgency,
+                  urgency_deadline: deadline,
+                })
+                setSelectedVendorPart(vendorPart)
+                setProcurementJob(job)
+              } catch (err) {
+                // Keep the vendor selector open so the user can retry
+                setProcureError(`Failed to create procurement job: ${String(err)}`)
+              }
+            }}
+            onClose={() => { setProcureTarget(null); setProcureError(null) }}
+          />
+          {procureError && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-red-500/10 border border-red-500/25 rounded-xl px-5 py-3 text-sm text-red-400 shadow-2xl shadow-black/60 animate-fade-in">
+              {procureError}
+            </div>
+          )}
+        </>
       )}
 
       {procurementJob && selectedVendorPart && (

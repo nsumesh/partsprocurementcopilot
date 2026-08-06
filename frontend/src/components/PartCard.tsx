@@ -1,6 +1,6 @@
 import type { FitmentConfidence, SearchResultPart } from "../types"
 
-const CONF: Record<FitmentConfidence, { ring: string; dot: string; label: string }> = {
+const CONF: Partial<Record<FitmentConfidence, { ring: string; dot: string; label: string }>> = {
   "High Probability":   { ring: "bg-green-500/10 text-green-400 ring-green-500/25",  dot: "bg-green-500",  label: "High fit" },
   "Medium Probability": { ring: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/25",dot: "bg-yellow-500", label: "Medium fit" },
   "Low Probability":    { ring: "bg-amber-500/10 text-amber-400 ring-amber-500/25",   dot: "bg-amber-500",  label: "Low fit" },
@@ -14,7 +14,12 @@ interface Props {
 
 export default function PartCard({ result, onClick }: Props) {
   const { part, fitment } = result
-  const conf = CONF[fitment.confidence]
+  // Fallback for unknown confidence strings — neutral styling, raw label
+  const conf = CONF[fitment.confidence] ?? {
+    ring: "bg-zinc-800 text-zinc-400 ring-zinc-700",
+    dot: "bg-zinc-500",
+    label: fitment.confidence,
+  }
 
   return (
     <button

@@ -32,15 +32,20 @@ async def decode_vin(
             resp = await http.get(url)
             resp.raise_for_status()
             data = resp.json()
-    except (httpx.HTTPError, Exception):
+    except Exception:
         return None
 
-    results = data.get("Results", [{}])[0]
+    # NHTSA can return "Results": [] — the .get default only covers a missing key
+    result_rows = data.get("Results") or []
+    results = result_rows[0] if result_rows else {}
 
     make = results.get("Make") or None
     model = results.get("Model") or None
     raw_year = results.get("ModelYear")
-    year = int(raw_year) if raw_year and raw_year.isdigit() else None
+    try:
+        year = int(raw_year) if raw_year is not None else None
+    except (TypeError, ValueError):
+        year = None
 
     cylinders = results.get("EngineCylinders") or ""
     displacement = results.get("DisplacementL") or ""

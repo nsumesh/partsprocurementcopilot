@@ -19,6 +19,7 @@ const STATUS_LABEL: Record<string, string> = {
   ranked:               "Ranked",
   accepted:             "Accepted",
   rejected:             "Rejected",
+  failed:               "Failed",
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -32,6 +33,7 @@ const STATUS_COLOR: Record<string, string> = {
   ranked:               "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/25",
   accepted:             "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40",
   rejected:             "bg-red-500/10 text-red-400 ring-1 ring-red-500/25",
+  failed:               "bg-red-500/10 text-red-400 ring-1 ring-red-500/25",
 }
 
 function elapsed(isoString: string) {
@@ -61,7 +63,7 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
   const [error, setError] = useState<string | null>(null)
   const [outreachOpen, setOutreachOpen] = useState(false)
 
-  const lastEvent = job.events[job.events.length - 1]
+  const lastEvent = job.events?.[job.events.length - 1]
   const lastEventTime = lastEvent?.created_at
 
   async function act(fn: () => Promise<ProcurementJob>) {
@@ -77,9 +79,12 @@ export default function VendorOutreachPanel({ job, onClose, onJobUpdate }: Props
     }
   }
 
-  const maxPrice = Math.max(job.parsed_unit_price ?? 0, 500)
-  const priceScore  = job.parsed_unit_price != null ? 1 - job.parsed_unit_price / maxPrice : null
-  const deliveryScore = job.parsed_delivery_hours != null ? 1 - job.parsed_delivery_hours / 720 : null
+  // mirrors backend/app/agents/ranker.py — keep in sync
+  const PRICE_CEILING = 1500
+  const DELIVERY_CEILING_HOURS = 720
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+  const priceScore  = job.parsed_unit_price != null ? clamp01(1 - job.parsed_unit_price / PRICE_CEILING) : null
+  const deliveryScore = job.parsed_delivery_hours != null ? clamp01(1 - job.parsed_delivery_hours / DELIVERY_CEILING_HOURS) : null
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>

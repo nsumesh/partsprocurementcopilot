@@ -17,7 +17,9 @@ export default function OutreachConfirm({ job, onConfirm, onCancel }: Props) {
     setSending(true)
     setError(null)
     try {
-      const updated = await sendOutreach(job.id)
+      // Only send the edited email if the operator actually changed it
+      const edited = email !== (job.outreach_email ?? "")
+      const updated = await sendOutreach(job.id, edited ? email : undefined)
       onConfirm(updated)
     } catch (err) {
       setError(String(err))
@@ -36,7 +38,7 @@ export default function OutreachConfirm({ job, onConfirm, onCancel }: Props) {
       >
         <h2 className="text-xl font-bold text-white mb-1">Review Outreach Email</h2>
         <p className="text-sm text-zinc-400 mb-5">
-          To: <span className="text-zinc-300">{job.vendor?.name}</span>
+          To: <span className="text-zinc-300">{job.vendor?.name ?? "—"}</span>
           {job.vendor?.email && <span className="text-zinc-500"> &lt;{job.vendor.email}&gt;</span>}
         </p>
 

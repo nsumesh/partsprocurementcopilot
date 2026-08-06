@@ -94,6 +94,10 @@ async def run_ingestion() -> None:
 def _load_csv(path: str) -> list[dict]:
     p = Path(path)
     if not p.exists():
+        print(
+            f"  WARNING: {path} not found — zero aftermarket parts will be ingested. "
+            "Run Step 2 (aftermarket generation) first or restore the CSV."
+        )
         return []
     with open(p, encoding="utf-8") as f:
         return list(csv.DictReader(f))

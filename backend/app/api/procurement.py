@@ -14,7 +14,7 @@ from app.db.supabase import (
     fetch_procurement_jobs,
     insert_procurement_event,
     insert_procurement_job,
-    update_procurement_job,
+    update_job_if_status,
 )
 from app.schemas.procurement import ProcurementJob, ProcurementJobCreate
 from app.vin.decoder import decode_vin
@@ -26,11 +26,51 @@ class FollowUpBody(BaseModel):
     follow_up_email: str | None = None
 
 
+class SendBody(BaseModel):
+    outreach_email: str | None = None
+
+
 async def _fetch_job(supabase, job_id: str) -> ProcurementJob:
     row = await fetch_procurement_job(supabase, job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
     return ProcurementJob(**row)
+
+
+async def _cas_transition(
+    supabase,
+    job_id: str,
+    expected_status: str,
+    to_status: str,
+    extra_fields: dict | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Atomically transition a job, guarding against concurrent state changes.
+
+    The status predicate rides on the UPDATE itself, so two racing requests can't
+    both pass a read-then-check guard — the loser gets a 409 with the actual status.
+    """
+    fields = {
+        "status": to_status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **(extra_fields or {}),
+    }
+    updated = await update_job_if_status(supabase, job_id, expected_status, fields)
+    if updated is None:
+        current = await fetch_procurement_job(supabase, job_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is in status '{current['status']}', expected '{expected_status}'",
+        )
+    await insert_procurement_event(supabase, {
+        "job_id": job_id,
+        "from_status": expected_status,
+        "to_status": to_status,
+        "actor": "user",
+        "metadata": metadata or {},
+    })
 
 
 def _respond_at(response_rate: float) -> datetime:
@@ -106,29 +146,25 @@ async def get_job(job_id: str, request: Request):
 
 
 @router.post("/jobs/{job_id}/send", response_model=ProcurementJob)
-async def send_outreach(job_id: str, request: Request):
+async def send_outreach(job_id: str, request: Request, body: SendBody | None = None):
     supabase = request.app.state.supabase
     job = await fetch_procurement_job(supabase, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "created":
-        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'created'")
 
     vendor = job.get("vendor") or {}
     respond_at = _respond_at(float(vendor.get("response_rate", 0.75)))
 
-    await update_procurement_job(supabase, job_id, {
-        "status": "outreach_sent",
-        "respond_at": respond_at.isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-    await insert_procurement_event(supabase, {
-        "job_id": job_id,
-        "from_status": "created",
-        "to_status": "outreach_sent",
-        "actor": "user",
-        "metadata": {"respond_at": respond_at.isoformat()},
-    })
+    extra_fields: dict = {"respond_at": respond_at.isoformat()}
+    # Persist the operator-edited email so edits made in the confirm modal aren't discarded
+    if body and body.outreach_email:
+        extra_fields["outreach_email"] = body.outreach_email
+
+    await _cas_transition(
+        supabase, job_id, "created", "outreach_sent",
+        extra_fields=extra_fields,
+        metadata={"respond_at": respond_at.isoformat()},
+    )
     return await _fetch_job(supabase, job_id)
 
 
@@ -138,95 +174,38 @@ async def send_followup(job_id: str, body: FollowUpBody, request: Request):
     job = await fetch_procurement_job(supabase, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "follow_up_required":
-        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'follow_up_required'")
 
     vendor = job.get("vendor") or {}
     respond_at = _respond_at(float(vendor.get("response_rate", 0.75)))
 
-    fields: dict = {
-        "status": "follow_up_sent",
-        "respond_at": respond_at.isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    extra_fields: dict = {"respond_at": respond_at.isoformat()}
     if body.follow_up_email:
-        fields["follow_up_email"] = body.follow_up_email
+        extra_fields["follow_up_email"] = body.follow_up_email
 
-    await update_procurement_job(supabase, job_id, fields)
-    await insert_procurement_event(supabase, {
-        "job_id": job_id,
-        "from_status": "follow_up_required",
-        "to_status": "follow_up_sent",
-        "actor": "user",
-        "metadata": {"respond_at": respond_at.isoformat()},
-    })
+    await _cas_transition(
+        supabase, job_id, "follow_up_required", "follow_up_sent",
+        extra_fields=extra_fields,
+        metadata={"respond_at": respond_at.isoformat()},
+    )
     return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/confirm", response_model=ProcurementJob)
 async def confirm_parsed(job_id: str, request: Request):
     supabase = request.app.state.supabase
-    job = await fetch_procurement_job(supabase, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "parsed":
-        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'parsed'")
-
-    await update_procurement_job(supabase, job_id, {
-        "status": "confirmed",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-    await insert_procurement_event(supabase, {
-        "job_id": job_id,
-        "from_status": "parsed",
-        "to_status": "confirmed",
-        "actor": "user",
-        "metadata": {},
-    })
+    await _cas_transition(supabase, job_id, "parsed", "confirmed")
     return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/accept", response_model=ProcurementJob)
 async def accept_job(job_id: str, request: Request):
     supabase = request.app.state.supabase
-    job = await fetch_procurement_job(supabase, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "ranked":
-        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'ranked'")
-
-    await update_procurement_job(supabase, job_id, {
-        "status": "accepted",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-    await insert_procurement_event(supabase, {
-        "job_id": job_id,
-        "from_status": "ranked",
-        "to_status": "accepted",
-        "actor": "user",
-        "metadata": {},
-    })
+    await _cas_transition(supabase, job_id, "ranked", "accepted")
     return await _fetch_job(supabase, job_id)
 
 
 @router.post("/jobs/{job_id}/reject", response_model=ProcurementJob)
 async def reject_job(job_id: str, request: Request):
     supabase = request.app.state.supabase
-    job = await fetch_procurement_job(supabase, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "ranked":
-        raise HTTPException(status_code=409, detail=f"Job is in status '{job['status']}', expected 'ranked'")
-
-    await update_procurement_job(supabase, job_id, {
-        "status": "rejected",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-    await insert_procurement_event(supabase, {
-        "job_id": job_id,
-        "from_status": "ranked",
-        "to_status": "rejected",
-        "actor": "user",
-        "metadata": {},
-    })
+    await _cas_transition(supabase, job_id, "ranked", "rejected")
     return await _fetch_job(supabase, job_id)

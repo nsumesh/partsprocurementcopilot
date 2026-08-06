@@ -95,6 +95,7 @@ export type JobStatus =
   | "ranked"
   | "accepted"
   | "rejected"
+  | "failed"
 
 export interface ProcurementEvent {
   id: string
@@ -126,6 +127,7 @@ export interface ProcurementJob {
   parsed_delivery_date: string | null
   parsed_delivery_hours: number | null
   ranking_score: number | null
+  attempt_count?: number
   respond_at: string | null
   created_at: string
   updated_at: string | null

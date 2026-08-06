@@ -1,12 +1,16 @@
 import asyncio
 import json
+import os
 import sys
 import time
 from typing import Any
 
 import httpx
 
-API_BASE = "http://localhost:8000"
+API_BASE = os.environ.get("EVAL_API_BASE", "http://localhost:8000")
+
+# Latency budgets from testing-edge-cases.md — reported as warnings, not failures
+_LATENCY_BUDGET_MS = {"standard": 15_000, "urgent": 10_000}
 
 GOLDEN_QUERIES = [
     {
@@ -14,6 +18,7 @@ GOLDEN_QUERIES = [
         "query": "oil filter",
         "urgency": "standard",
         "expect_clarify": False,
+        "expect_top_terms": ["oil filter"],
         "label": "Kenworth T680 — oil filter",
     },
     {
@@ -21,6 +26,7 @@ GOLDEN_QUERIES = [
         "query": "fuel filter replacement",
         "urgency": "standard",
         "expect_clarify": False,
+        "expect_top_terms": ["fuel filter"],
         "label": "Freightliner Cascadia — fuel filter",
     },
     {
@@ -35,6 +41,7 @@ GOLDEN_QUERIES = [
         "query": "air filter",
         "urgency": "standard",
         "expect_clarify": False,
+        "expect_top_terms": ["air filter"],
         "label": "Peterbilt 386 — air filter",
     },
     {
@@ -42,9 +49,24 @@ GOLDEN_QUERIES = [
         "query": "slack adjuster",
         "urgency": "urgent",
         "expect_clarify": False,
+        "expect_top_terms": ["slack adjuster"],
         "label": "Mack Pinnacle — slack adjuster (urgent)",
     },
 ]
+
+
+def _relevance_ok(case: dict, parts: list[dict]) -> bool:
+    """Top-3 results must actually be the thing that was asked for — a run that
+    returns ten mud flaps for 'oil filter' should fail, not pass on liveness."""
+    terms = case.get("expect_top_terms")
+    if not terms:
+        return True
+    for event in parts[:3]:
+        part = event.get("part") or {}
+        haystack = f"{part.get('name', '')} {part.get('category', '')}".lower()
+        if any(term in haystack for term in terms):
+            return True
+    return False
 
 
 async def _collect_sse(
@@ -109,10 +131,18 @@ async def run_eval() -> None:
 
             clarify_ok = result["clarify_triggered"] == case["expect_clarify"]
             has_output = len(result["parts"]) > 0 or result["clarify_triggered"]
-            passed = clarify_ok and has_output
+            relevance_ok = _relevance_ok(case, result["parts"])
+            passed = clarify_ok and has_output and relevance_ok
 
             if not passed:
                 all_pass = False
+
+            budget_ms = _LATENCY_BUDGET_MS.get(case["urgency"], 15_000)
+            if result["latency_ms"] > budget_ms:
+                print(
+                    f"    WARNING: latency {result['latency_ms']}ms exceeds "
+                    f"{budget_ms}ms budget for {case['urgency']} urgency"
+                )
 
             rows.append({
                 "vin": case["vin"],
@@ -122,18 +152,20 @@ async def run_eval() -> None:
                 "clarify_triggered": result["clarify_triggered"],
                 "clarify_expected": case["expect_clarify"],
                 "clarify_ok": clarify_ok,
+                "relevance_ok": relevance_ok,
                 "latency_ms": result["latency_ms"],
                 "status": "PASS" if passed else "FAIL",
             })
 
     print()
-    print(f"{'Label':<40} {'Parts':>5} {'Clarify':>7} {'Latency':>9} {'Status':>6}")
-    print("-" * 72)
+    print(f"{'Label':<40} {'Parts':>5} {'Clarify':>7} {'Rel':>4} {'Latency':>9} {'Status':>6}")
+    print("-" * 77)
     for r in rows:
         print(
             f"{r['label']:<40} "
             f"{r['parts_count']:>5} "
             f"{str(r['clarify_triggered']):>7} "
+            f"{str(r.get('relevance_ok', '-')):>4} "
             f"{r['latency_ms']:>8}ms "
             f"{r['status']:>6}"
         )

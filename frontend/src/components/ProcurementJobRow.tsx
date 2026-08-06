@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
   ranked:             "Ranked",
   accepted:           "Accepted",
   rejected:           "Rejected",
+  failed:             "Failed",
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -29,6 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
   ranked:             "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/25",
   accepted:           "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40",
   rejected:           "bg-red-500/10 text-red-400 ring-1 ring-red-500/25",
+  failed:             "bg-red-500/10 text-red-400 ring-1 ring-red-500/25",
 }
 
 function elapsed(isoString: string) {
@@ -39,7 +41,7 @@ function elapsed(isoString: string) {
 }
 
 export default function ProcurementJobRow({ job, onClick }: Props) {
-  const lastEvent = job.events[job.events.length - 1]
+  const lastEvent = job.events?.[job.events.length - 1]
   const lastAction = lastEvent
     ? `${STATUS_LABEL[lastEvent.to_status] ?? lastEvent.to_status} by ${lastEvent.actor}`
     : "—"

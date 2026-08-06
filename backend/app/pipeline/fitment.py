@@ -20,20 +20,30 @@ def _structured_match(part: Part, vin_spec: VINSpec) -> FitmentResult | None:
     if not fn:
         return None
 
-    make_match = not fn.get("make") or (
-        vin_spec.make and fn["make"].lower() in vin_spec.make.lower()
-    )
-    model_match = not fn.get("model") or (
-        vin_spec.model and fn["model"].lower() in vin_spec.model.lower()
-    )
-    engine_match = not fn.get("engine") or (
-        vin_spec.engine and fn["engine"].lower() in vin_spec.engine.lower()
-    )
+    # Only fields present on BOTH sides count as evidence. If fit_notes constrain a
+    # field the VIN didn't decode, or carry no verifiable field at all, escalate to
+    # the LLM instead of returning HIGH on zero evidence.
+    checks: list[bool] = []
 
-    year_match = True
-    yr = vin_spec.year
-    if yr and fn.get("year_range"):
+    for key, vehicle_value in (
+        ("make", vin_spec.make),
+        ("model", vin_spec.model),
+        ("engine", vin_spec.engine),
+    ):
+        note_value = fn.get(key)
+        if not note_value:
+            continue
+        if not vehicle_value:
+            return None
+        checks.append(str(note_value).lower() in vehicle_value.lower())
+
+    if fn.get("year_range"):
+        yr = vin_spec.year
+        if not yr:
+            return None
         yr_range = fn["year_range"]
+        low: int | None = None
+        high: int | None = None
         if isinstance(yr_range, dict):
             low = yr_range.get("min", 0)
             high = yr_range.get("max", 9999)
@@ -41,15 +51,20 @@ def _structured_match(part: Part, vin_spec: VINSpec) -> FitmentResult | None:
             # Aftermarket data stores year_range as "2005-2023" string
             parts_yr = yr_range.split("-")
             try:
-                low = int(parts_yr[0])
-                high = int(parts_yr[1]) if len(parts_yr) > 1 else 9999
+                low = int(parts_yr[0].strip())
+                second = parts_yr[1].strip() if len(parts_yr) > 1 else ""
+                high = int(second) if second else 9999
             except (ValueError, IndexError):
-                low, high = 0, 9999
-        else:
-            low, high = 0, 9999
-        year_match = low <= yr <= high
+                low = None
+        if low is None or high is None:
+            # Unparseable range ("2005-Present", unexpected type) — don't assume it fits
+            return None
+        checks.append(low <= yr <= high)
 
-    if make_match and model_match and engine_match and year_match:
+    if not checks:
+        return None
+
+    if all(checks):
         return FitmentResult(
             confidence=FitmentConfidence.HIGH,
             reasoning="Structured fit_notes match",

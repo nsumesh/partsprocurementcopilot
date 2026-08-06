@@ -14,6 +14,7 @@ JobStatus = Literal[
     "ranked",
     "accepted",
     "rejected",
+    "failed",
 ]
 
 
@@ -70,6 +71,7 @@ class ProcurementJob(BaseModel):
     parsed_delivery_hours: int | None = None
     ranking_score: float | None = None
     respond_at: datetime | None = None
+    attempt_count: int = 0
     created_at: datetime
     updated_at: datetime | None = None
     vendor: Vendor | None = None

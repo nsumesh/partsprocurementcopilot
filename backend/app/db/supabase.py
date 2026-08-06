@@ -77,6 +77,8 @@ async def fetch_vendors_for_part(client: AsyncClient, part_id: str) -> list[dict
 
 async def insert_procurement_job(client: AsyncClient, job: dict) -> dict:
     response = await client.table("procurement_jobs").insert(job).execute()
+    if not response.data:
+        raise RuntimeError("procurement job insert returned no rows")
     return response.data[0]
 
 
@@ -89,17 +91,44 @@ async def update_procurement_job(
         .eq("id", job_id)
         .execute()
     )
+    if not response.data:
+        raise RuntimeError(f"procurement job {job_id} update matched no rows")
     return response.data[0]
+
+
+async def update_job_if_status(
+    client: AsyncClient,
+    job_id: str,
+    expected_status: str | list[str],
+    fields: dict,
+) -> dict | None:
+    """Compare-and-set: apply fields only if the job is still in expected_status.
+
+    Returns the updated row, or None if the status predicate matched no rows
+    (another worker/user transitioned the job first).
+    """
+    builder = client.table("procurement_jobs").update(fields).eq("id", job_id)
+    if isinstance(expected_status, list):
+        builder = builder.in_("status", expected_status)
+    else:
+        builder = builder.eq("status", expected_status)
+    response = await builder.execute()
+    return response.data[0] if response.data else None
 
 
 async def fetch_procurement_jobs(client: AsyncClient) -> list[dict]:
     response = (
         await client.table("procurement_jobs")
-        .select("*, vendor:vendors(*)")
+        .select("*, vendor:vendors(*), events:procurement_events(*)")
         .order("created_at", desc=True)
         .execute()
     )
-    return response.data or []
+    rows = response.data or []
+    for row in rows:
+        row["events"] = sorted(
+            row.get("events") or [], key=lambda e: e.get("created_at") or ""
+        )
+    return rows
 
 
 async def fetch_procurement_job(client: AsyncClient, job_id: str) -> dict | None:
@@ -150,6 +179,8 @@ async def fetch_confirmed_unranked(client: AsyncClient) -> list[dict]:
 
 async def insert_procurement_event(client: AsyncClient, event: dict) -> dict:
     response = await client.table("procurement_events").insert(event).execute()
+    if not response.data:
+        raise RuntimeError("procurement event insert returned no rows")
     return response.data[0]
 
 

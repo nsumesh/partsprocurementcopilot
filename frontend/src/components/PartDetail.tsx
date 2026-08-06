@@ -1,6 +1,6 @@
 import type { FitmentConfidence, SearchResultPart } from "../types"
 
-const CONF_STYLES: Record<FitmentConfidence, string> = {
+const CONF_STYLES: Partial<Record<FitmentConfidence, string>> = {
   "High Probability":   "bg-green-500/10 text-green-400 ring-green-500/25",
   "Medium Probability": "bg-yellow-500/10 text-yellow-400 ring-yellow-500/25",
   "Low Probability":    "bg-amber-500/10 text-amber-400 ring-amber-500/25",
@@ -47,7 +47,7 @@ export default function PartDetail({ result, onOrder, onProcure, onClose }: Prop
           {/* Fitment */}
           <section>
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Fitment</h3>
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ring-1 ring-inset ${CONF_STYLES[fitment.confidence]}`}>
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ring-1 ring-inset ${CONF_STYLES[fitment.confidence] ?? "bg-zinc-800 text-zinc-400 ring-zinc-700"}`}>
               {fitment.confidence}
             </span>
             <p className="text-sm text-zinc-300 mt-3 leading-relaxed">{fitment.reasoning}</p>

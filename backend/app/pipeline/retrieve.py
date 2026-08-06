@@ -15,7 +15,7 @@ async def retrieve(
     client: AsyncClient,
     fts: FTSIndex,
 ) -> list[tuple[str, float]]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     vec_task = vector_search(client, query_embedding, top_k)
     fts_task = loop.run_in_executor(None, fts.query, query_text, top_k)

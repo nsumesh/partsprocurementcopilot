@@ -4,9 +4,9 @@ _DELIVERY_CEILING_HOURS = 720  # 30 days — ceiling above any realistic deliver
 
 # Ordered most-specific first so "next business day" beats "day"
 _DELIVERY_PATTERNS: list[tuple[re.Pattern, int]] = [
-    (re.compile(r'same.?day|within.?(\d+)\s*hour', re.I),          2),
+    (re.compile(r'same.?day',                               re.I), 2),     # fixed value
     (re.compile(r'next.?business.?day|1\s*business\s*day',  re.I), 24),
-    (re.compile(r'(\d+)\s*hour',                            re.I), 1),     # multiplier below
+    (re.compile(r'(\d+)\s*hour',                            re.I), 1),     # "within 24 hours" → 24
     (re.compile(r'(\d+)\s*-\s*(\d+)\s*business\s*day',     re.I), 24),    # range × avg × 24
     (re.compile(r'(\d+)\s*business\s*day',                  re.I), 24),    # n days × 24
     (re.compile(r'(\d+)\s*-\s*(\d+)\s*day',                re.I), 24),    # range × avg × 24
@@ -36,9 +36,12 @@ def compute_ranking_score(
     unit_price: float,
     delivery_hours: int,
     response_rate: float,
-    max_catalog_price: float = 500.0,
+    max_catalog_price: float = 1500.0,
 ) -> float:
-    price_score = 1.0 - (unit_price / max_catalog_price)
-    delivery_score = 1.0 - (delivery_hours / _DELIVERY_CEILING_HOURS)
+    # Ceiling sits above the most expensive catalog part (~$1,275) and each sub-score
+    # is clamped individually — otherwise one negative component drags the composite
+    # to 0 and every expensive part ranks identically.
+    price_score = max(0.0, min(1.0, 1.0 - (unit_price / max_catalog_price)))
+    delivery_score = max(0.0, min(1.0, 1.0 - (delivery_hours / _DELIVERY_CEILING_HOURS)))
     score = (0.4 * price_score) + (0.4 * delivery_score) + (0.2 * response_rate)
     return max(0.0, min(1.0, score))
