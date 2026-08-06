@@ -22,7 +22,7 @@ export default function OrdersPage() {
       <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur border-b border-zinc-800">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-1">
           <span className="text-sm font-black text-white mr-4">
-            HeaviAI <span className="text-orange-500">·</span>
+            Procurement CoPilot <span className="text-orange-500">·</span>
           </span>
           <button
             onClick={() => navigate("/")}

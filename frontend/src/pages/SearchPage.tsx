@@ -20,7 +20,7 @@ export default function SearchPage() {
       <header className="relative z-10 border-b border-zinc-800/60">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-1">
           <span className="text-sm font-black text-white mr-4">
-            HeaviAI <span className="text-orange-500">·</span>
+            Procurement CoPilot <span className="text-orange-500">·</span>
           </span>
           <button
             onClick={() => navigate("/")}
@@ -55,7 +55,6 @@ export default function SearchPage() {
               </svg>
             </div>
             <h1 className="text-4xl font-black text-white tracking-tight">
-              HeaviAI{" "}
               <span className="text-orange-500">Procurement</span>
               <br />
               <span className="text-3xl font-bold text-zinc-400">CoPilot</span>

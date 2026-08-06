@@ -127,7 +127,7 @@ export default function ResultsPage() {
           <div className="w-px h-5 bg-zinc-800 shrink-0" />
           {/* Brand mark */}
           <span className="text-sm font-black text-white shrink-0 hidden sm:block">
-            HeaviAI <span className="text-orange-500">·</span>
+            Procurement CoPilot <span className="text-orange-500">·</span>
           </span>
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <span className="text-sm font-bold text-zinc-300 truncate">"{state.query}"</span>
