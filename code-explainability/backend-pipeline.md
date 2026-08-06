@@ -32,7 +32,7 @@
 
 ## backend/app/pipeline/retrieve.py
 
-**What it does:** Runs pgvector ANN (via Supabase `match_parts` RPC) and SQLite BM25 (via `FTSIndex.query`) concurrently with `asyncio.gather`, then merges the two ranked lists using Reciprocal Rank Fusion (k=60). Returns the top-N part IDs sorted by combined RRF score.
+**What it does:** Runs pgvector ANN (via Supabase `match_parts` RPC) and SQLite BM25 (via `FTSIndex.query`) concurrently with `asyncio.gather`, then merges the two ranked lists using Reciprocal Rank Fusion (k=60). The BM25 leg runs in a thread executor obtained via `asyncio.get_running_loop()` (replacing the deprecated `get_event_loop`). Returns the top-N part IDs sorted by combined RRF score.
 
 **External services:** Supabase pgvector RPC (`match_parts`), SQLite FTS (local file).
 
@@ -42,7 +42,7 @@
 
 ## backend/app/pipeline/rerank.py
 
-**What it does:** Takes the candidate `Part` list from retrieval and re-orders it using Cohere's `rerank-english-v3.0` model against the original query string. Returns parts in the order Cohere considers most relevant.
+**What it does:** Takes the candidate `Part` list from retrieval and re-orders it using Cohere's `rerank-english-v3.0` model against the original query string. Accepts an optional `top_n` so the reranker cuts a wide candidate pool down to the final result count instead of merely permuting an already-final list. Returns parts in the order Cohere considers most relevant.
 
 **External services:** Cohere Rerank API.
 
@@ -52,7 +52,7 @@
 
 ## backend/app/pipeline/fitment.py
 
-**What it does:** Assigns a `FitmentResult` to each part. First tries a structured match against `part.fit_notes` (make/model/engine/year_range) — an exact match returns `HIGH` confidence immediately. If fit_notes are absent or don't fully match, falls back to the Anthropic API for an LLM-based confidence assessment.
+**What it does:** Assigns a `FitmentResult` to each part. First tries a structured match against `part.fit_notes` (make/model/engine/year_range) — but only fields present on BOTH fit_notes and the decoded VIN spec count as evidence. A match across all verifiable fields returns `HIGH` confidence immediately; if fit_notes constrain a field the VIN didn't decode, carry zero verifiable fields, or have an unparseable `year_range` (e.g. "2005-Present"), it escalates to the Anthropic API instead of returning `HIGH` on no evidence or failing open. If fit_notes are absent or don't fully match, it likewise falls back to the LLM-based confidence assessment.
 
 **External services:** Anthropic API (`claude-sonnet-4-6` / `claude-haiku-4-5-20251001`, temperature=0) for LLM fallback only.
 

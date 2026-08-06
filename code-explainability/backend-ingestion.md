@@ -42,7 +42,7 @@
 
 ## backend/ingestion/loader.py
 
-**What it does:** Full ingestion pipeline orchestrator. Runs 9 steps sequentially: OE scrape → aftermarket CSV generation → normalization → deduplication → Cohere embedding → Supabase upsert → FTS index rebuild (fetches back from Supabase to get assigned UUIDs) → VIN seed. After the 9-step pipeline, additionally calls `seed_vendors(supabase)` and `seed_vendor_parts(supabase)` — these run after parts are in Supabase so `seed_vendor_parts` can fetch assigned UUIDs. Prints a final ingestion report. Entry point: `python -m ingestion.loader` from `backend/`.
+**What it does:** Full ingestion pipeline orchestrator. Runs 9 steps sequentially: OE scrape → aftermarket CSV generation → normalization → deduplication → Cohere embedding → Supabase upsert → FTS index rebuild (fetches back from Supabase to get assigned UUIDs) → VIN seed. If the aftermarket CSV is missing at load time it prints a loud warning ("zero aftermarket parts will be ingested") instead of silently continuing with OE parts only. After the 9-step pipeline, additionally calls `seed_vendors(supabase)` and `seed_vendor_parts(supabase)` — these run after parts are in Supabase so `seed_vendor_parts` can fetch assigned UUIDs. Prints a final ingestion report. Entry point: `python -m ingestion.loader` from `backend/`.
 
 **External services:** Supabase (upsert + fetch), Cohere (embed), Anthropic (via aftermarket.py), Browserbase/Playwright (via scraper.py), SQLite (FTS index).
 
@@ -52,9 +52,9 @@
 
 ## backend/ingestion/eval_runner.py
 
-**What it does:** Runs 5 hardcoded golden queries against the live `/search` SSE endpoint and evaluates results. Checks that non-ambiguous queries return parts and that the Volvo VNL "need brakes" query triggers a `clarify` event. Prints a formatted results table and exits with code 0 (all pass) or 1 (any fail).
+**What it does:** Runs 5 hardcoded golden queries against the live `/search` SSE endpoint and evaluates results. Beyond liveness, each non-ambiguous case asserts relevance: one of its `expect_top_terms` must appear in a top-3 result's name or category, so a run returning ten mud flaps for "oil filter" fails instead of passing. The Volvo VNL "need brakes" query must trigger a `clarify` event. Latency is checked against per-urgency budgets (15s standard / 10s urgent) and reported as warnings, not failures. Prints a formatted results table and exits with code 0 (all pass) or 1 (any fail).
 
-**External services:** Live FastAPI `/search` endpoint (requires `uvicorn` running on `localhost:8000`).
+**External services:** Live FastAPI `/search` endpoint (defaults to `localhost:8000`, overridable via the `EVAL_API_BASE` env var).
 
 **What calls it:** `python -m ingestion.eval_runner` from `backend/` — the CP-5 verification step.
 

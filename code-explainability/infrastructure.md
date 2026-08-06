@@ -10,6 +10,26 @@
 
 ---
 
+## migrations/002_vendor_outreach.sql
+
+**What it does:** Reconstructed v2.0 vendor-outreach schema so the repo is reproducible from source — written idempotently (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, drop-and-recreate policies) so it is safe on a fresh project and on the live DB where these tables were originally created out-of-band via the SQL editor. Creates `vendors`, `vendor_parts`, `procurement_jobs` (including `attempt_count` and the 11-state status CHECK with terminal `failed`), and the append-only `procurement_events` log. Adds indexes for the worker's 30-second poll predicates and the board queries, enables RLS with SELECT-only policies for the anon role (the browser holds the anon key for Realtime; all writes go through the service-role backend, so the state machine can't be bypassed client-side), and adds `procurement_jobs` to the `supabase_realtime` publication for the job board's WebSocket subscription.
+
+**External services:** Applied manually via Supabase SQL editor.
+
+**What calls it:** Run once after `001_initial.sql`. `ingestion/vendor_seeder.py` populates `vendors`/`vendor_parts`; the API and worker read/write `procurement_jobs`/`procurement_events`.
+
+---
+
+## migrations/003_retrieval_fixes.sql
+
+**What it does:** Replaces the pgvector index from 001. That migration created an IVFFlat index with `lists = 100` on a ~170-row table (guidance is lists ≈ rows/1000) and created it before any data existed, so the centroids were never trained and queries scanned ~1–2 near-random vectors. Drops it and creates an HNSW index (`vector_cosine_ops`), which needs no training step, works on empty tables, and is the better choice at this corpus size.
+
+**External services:** Applied manually via Supabase SQL editor.
+
+**What calls it:** Run once after `002_vendor_outreach.sql`. The `match_parts` RPC uses the index at query time.
+
+---
+
 ## .env.example
 
 **What it does:** Documents every environment variable the system requires. Covers Supabase credentials, Anthropic and Cohere API keys, Browserbase credentials for the ingestion scraper, and three frontend Vite env vars: `VITE_API_BASE_URL` (backend URL), `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (needed by `ProcurementBoard` for Supabase Realtime WebSocket). Developers copy this to `.env` and fill in real values; `.env` is gitignored.

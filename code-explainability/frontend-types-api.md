@@ -2,7 +2,7 @@
 
 ## frontend/src/types/index.ts
 
-**What it does:** TypeScript type definitions mirroring all backend Pydantic schemas. Core types: `Part`, `FitmentResult`, `FitmentConfidence`, `SearchResultPart`, `VINSpec`, `Order`, `OrderCreate`. Vendor outreach types: `Vendor`, `VendorPart`, `JobStatus` union, `ProcurementEvent`, `ProcurementJob` (full job snapshot including all email fields, parsed fields, ranking score, and nested vendor + events), `ProcurementJobCreate` (POST body). Single source of truth for all data shapes used across API clients and components.
+**What it does:** TypeScript type definitions mirroring all backend Pydantic schemas. Core types: `Part`, `FitmentResult`, `FitmentConfidence`, `SearchResultPart`, `VINSpec`, `Order`, `OrderCreate`. Vendor outreach types: `Vendor`, `VendorPart`, `JobStatus` union (includes the terminal `'failed'` state), `ProcurementEvent`, `ProcurementJob` (full job snapshot including all email fields, parsed fields, ranking score, `attempt_count`, and nested vendor + events), `ProcurementJobCreate` (POST body). Single source of truth for all data shapes used across API clients and components.
 
 **External services:** None.
 
@@ -22,7 +22,7 @@
 
 ## frontend/src/api/search.ts
 
-**What it does:** Implements SSE streaming for the `/search` endpoint. `streamSearch()` opens a `fetch` + `ReadableStream` connection, parses `data:` lines from the stream, and dispatches to typed callbacks: `onPart` (each result card), `onClarify` (ambiguous query question), `onDone`, `onError`. Returns an `AbortController` so callers can cancel on component unmount.
+**What it does:** Implements SSE streaming for the `/search` endpoint. `streamSearch()` opens a `fetch` + `ReadableStream` connection, parses `data:` lines from the stream, and dispatches to typed callbacks: `onPart` (each result card), `onClarify` (ambiguous query question), `onDone`, `onError`. The request carries an optional `urgency_deadline`. `done` and `clarify` count as clean termination — the "Connection lost" error fires only when the stream closes without a terminal event (network drop or server crash). A 60-second inactivity watchdog aborts a stalled stream and reports a timeout, while caller-initiated aborts stay silent. Returns an `AbortController` so callers can cancel on component unmount.
 
 **External services:** Backend `/search` SSE endpoint.
 
@@ -62,8 +62,8 @@
 
 ## frontend/src/api/procurement.ts
 
-**What it does:** Seven typed wrappers covering the full job lifecycle: `createProcurementJob`, `getProcurementJobs`, `getProcurementJob`, `sendOutreach`, `sendFollowup` (accepts optional edited email body), `acceptJob`, `rejectJob`. All use `apiGet`/`apiPost` from `client.ts`.
+**What it does:** Eight typed wrappers covering the full job lifecycle: `createProcurementJob`, `getProcurementJobs`, `getProcurementJob`, `sendOutreach` (accepts an optional edited outreach email, sent as `{outreach_email}` so operator edits are persisted), `sendFollowup` (accepts optional edited email body), `confirmParsedFields`, `acceptJob`, `rejectJob`. All use `apiGet`/`apiPost` from `client.ts`.
 
 **External services:** Backend `/procurement/*` endpoints.
 
-**What calls it:** `ResultsPage` (create + send), `VendorOutreachPanel` (followup, accept, reject), `ProcurementBoard` (list).
+**What calls it:** `ResultsPage` (create), `OutreachConfirm` (send), `VendorOutreachPanel` (followup, confirm, accept, reject), `ProcurementBoard` (list).

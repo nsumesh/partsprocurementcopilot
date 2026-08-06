@@ -12,7 +12,7 @@
 
 ## backend/app/schemas/search.py
 
-**What it does:** Defines request/response schemas for the search pipeline — `SearchRequest` (VIN + query + urgency), `VINSpec` (decoded vehicle attributes), `IntentResult` (parsed part category + attributes + ambiguity flag), and `SearchResultPart` (part + fitment + RRF score).
+**What it does:** Defines request/response schemas for the search pipeline — `SearchRequest` (VIN + query + urgency + optional `urgency_deadline`; the query is bounded to 500 chars because it is interpolated into LLM prompts, so an unbounded string is unbounded token cost), `VINSpec` (decoded vehicle attributes), `IntentResult` (parsed part category + attributes + ambiguity flag), and `SearchResultPart` (part + fitment + RRF score).
 
 **External services:** None.
 
@@ -32,7 +32,7 @@
 
 ## backend/app/schemas/procurement.py
 
-**What it does:** Pydantic models for the vendor outreach feature. Defines `JobStatus` as a Literal union of all 10 state machine states. `Vendor` models the 10 vendor records (name, email, region, type, brands, response_rate). `VendorPart` models the explicit vendor×part mapping (pricing, delivery_estimate string, delivery_hours int, in_stock). `ProcurementJobCreate` is the POST body for creating a job. `ProcurementJob` is the full snapshot model including all generated/received email text, parsed fields from the vendor response, ranking_score, and respond_at timestamp. `ProcurementEvent` models one immutable event log row (from/to status, actor, metadata).
+**What it does:** Pydantic models for the vendor outreach feature. Defines `JobStatus` as a Literal union of all 11 state machine states, including the terminal `failed` state the worker uses for retry-capped and unrankable jobs. `Vendor` models the 10 vendor records (name, email, region, type, brands, response_rate). `VendorPart` models the explicit vendor×part mapping (pricing, delivery_estimate string, delivery_hours int, in_stock). `ProcurementJobCreate` is the POST body for creating a job. `ProcurementJob` is the full snapshot model including all generated/received email text, parsed fields from the vendor response, ranking_score, respond_at timestamp, and `attempt_count` (worker retry counter, default 0). `ProcurementEvent` models one immutable event log row (from/to status, actor, metadata).
 
 **External services:** None.
 

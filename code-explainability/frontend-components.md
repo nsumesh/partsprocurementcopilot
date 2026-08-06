@@ -18,7 +18,7 @@ Color tokens: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (input
 
 ## frontend/src/components/PartCard.tsx
 
-**What it does:** Renders a single search result as a dark card with fade-in animation on mount (triggered as cards stream in). Displays part name, part number (monospace), category chip, source chip (OEM=blue / Aftermarket=purple), fitment confidence badge (color-coded), and price. The full card is clickable to open the detail panel.
+**What it does:** Renders a single search result as a dark card with fade-in animation on mount (triggered as cards stream in). Displays part name, part number (monospace), category chip, source chip (OEM=blue / Aftermarket=purple), fitment confidence badge (color-coded, with a neutral zinc fallback showing the raw label for unknown confidence strings), and price. The full card is clickable to open the detail panel.
 
 **External services:** None.
 
@@ -28,7 +28,7 @@ Color tokens: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (input
 
 ## frontend/src/components/PartDetail.tsx
 
-**What it does:** Slide-in right panel showing full part detail. Sections: fitment confidence badge + reasoning paragraph, brand + unit price, description, specifications key/value table (from `part.attributes`), vendor sources list (vendor name, link). Two footer buttons: "Order This Part" (`onOrder`) for a simple intent order and "Procure →" (`onProcure`) which kicks off the vendor outreach flow. Rendered on top of a blurred dark backdrop; clicking outside or the X button closes it.
+**What it does:** Slide-in right panel showing full part detail. Sections: fitment confidence badge (neutral fallback styling for unknown confidence values) + reasoning paragraph, brand + unit price, description, specifications key/value table (from `part.attributes`), vendor sources list (vendor name, link). Two footer buttons: "Order This Part" (`onOrder`) for a simple intent order and "Procure →" (`onProcure`) which kicks off the vendor outreach flow. Rendered on top of a blurred dark backdrop; clicking outside or the X button closes it.
 
 **External services:** None.
 
@@ -78,7 +78,7 @@ Color tokens: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (input
 
 ## frontend/src/components/OutreachConfirm.tsx
 
-**What it does:** Modal showing the Haiku-generated outreach email in an editable `textarea`. User can edit before sending. "Send Outreach" calls `sendOutreach(job.id)`, which transitions the job to `outreach_sent`. Calls `onConfirm(updatedJob)` on success.
+**What it does:** Modal showing the Haiku-generated outreach email in an editable `textarea`. User can edit before sending. "Send Outreach" calls `sendOutreach(job.id, email)` — the edited body is passed only when the user actually changed it, so operator edits are persisted server-side — and transitions the job to `outreach_sent`. Calls `onConfirm(updatedJob)` on success.
 
 **External services:** Backend `POST /procurement/jobs/{id}/send` (via `sendOutreach`).
 
@@ -88,7 +88,7 @@ Color tokens: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (input
 
 ## frontend/src/components/VendorOutreachPanel.tsx
 
-**What it does:** Right-side slide-in panel (same pattern as `PartDetail`) showing the full lifecycle of a procurement job. Sections: vendor info card, collapsible outreach email, vendor response email, parsed fields table (missing values shown in amber), follow-up textarea editor when status is `follow_up_required`, ranking score breakdown with three `ScoreBar` sub-components when ranked, Accept/Reject sticky footer when ranked. All actions (send follow-up, accept, reject) call the relevant API function via the shared `act()` helper and propagate the updated job to the parent via `onJobUpdate`.
+**What it does:** Right-side slide-in panel (same pattern as `PartDetail`) showing the full lifecycle of a procurement job. Sections: vendor info card, collapsible outreach email, vendor response email, parsed fields table (missing values shown in amber), follow-up textarea editor when status is `follow_up_required`, ranking score breakdown with three `ScoreBar` sub-components when ranked, Accept/Reject sticky footer when ranked. The score bars recompute price/delivery sub-scores with the backend ranker's constants (1500 price ceiling, 720h delivery ceiling, clamped to [0, 1]) so the bars mirror the actual composite, and each bar renders only when its input is non-null. Status maps include the terminal `failed` state (red badge), and vendor/parsed fields are null-guarded. All actions (send follow-up, confirm, accept, reject) call the relevant API function via the shared `act()` helper and propagate the updated job to the parent via `onJobUpdate`.
 
 **External services:** Backend procurement endpoints (via `sendFollowup`, `acceptJob`, `rejectJob`).
 
@@ -98,8 +98,18 @@ Color tokens: `zinc-950` (page bg), `zinc-900` (cards/panels), `zinc-800` (input
 
 ## frontend/src/components/ProcurementJobRow.tsx
 
-**What it does:** Single table row for the procurement job board. Displays part name + part number, vendor name + type, status badge (color-coded with pulse animation for awaiting states), time elapsed since last event, and a "last action" string derived from the final event in `job.events`. Clicking the row calls `onClick`.
+**What it does:** Single table row for the procurement job board. Displays part name + part number, vendor name + type, status badge (color-coded with pulse animation for awaiting states; includes a red `failed` entry), time elapsed since last event, and a "last action" string derived from the final event in `job.events`. Vendor and events are accessed with optional chaining so a realtime-inserted row with no embedded vendor or empty events renders a placeholder instead of crashing. Clicking the row calls `onClick`.
 
 **External services:** None.
 
 **What calls it:** `ProcurementBoard` — one row per job in the jobs table.
+
+---
+
+## frontend/src/components/ErrorBoundary.tsx
+
+**What it does:** Class-based React error boundary wrapping the entire app. Catches uncaught render errors via `getDerivedStateFromError`, logs the error and component stack in `componentDidCatch`, and renders a dark-themed fallback card with a "Reload page" button instead of a white screen.
+
+**External services:** None.
+
+**What calls it:** `main.tsx` — wraps `<App />` inside `StrictMode`.
