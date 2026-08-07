@@ -9,7 +9,7 @@ import httpx
 
 API_BASE = os.environ.get("EVAL_API_BASE", "http://localhost:8000")
 
-# Latency budgets from testing-edge-cases.md — reported as warnings, not failures
+# Latency budgets from docs/testing-edge-cases.md — reported as warnings, not failures
 _LATENCY_BUDGET_MS = {"standard": 15_000, "urgent": 10_000}
 
 GOLDEN_QUERIES = [

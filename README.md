@@ -79,7 +79,7 @@ An AI-powered parts procurement tool for heavy-duty fleet operators. Enter a VIN
 ├── migrations/
 │   ├── 001_initial.sql     parts, orders, vin_cache, embeddings
 │   └── 002_vendor_outreach.sql  vendors, vendor_parts, procurement_jobs, procurement_events
-└── deployment-steps.md
+└── docs/                   deployment steps, architecture, design decisions
 ```
 
 ---
@@ -160,4 +160,4 @@ uv run python -m ingestion.loader
 
 ## Deployment
 
-See [deployment-steps.md](./deployment-steps.md) for the full Railway deployment guide including build arg configuration for the frontend Docker build.
+See [deployment-steps.md](./docs/deployment-steps.md) for the full Railway deployment guide including build arg configuration for the frontend Docker build.
