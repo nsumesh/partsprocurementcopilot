@@ -2,9 +2,9 @@
 
 An AI-powered parts procurement tool for heavy-duty fleet operators. Enter a VIN and a natural language description of what you need — the system finds the right parts, assesses fitment, surfaces vendors, and runs a complete AI-driven outreach loop to get quotes, parse responses, and rank vendors automatically.
 
-**Live:** https://frontend-production-bc15.up.railway.app
+**Live:** https://frontend-production-bc58e.up.railway.app/
 
-(Deployment not active at the moment, however railway files exist to deploy at any point of time)
+
 
 ## What it does
 
