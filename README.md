@@ -18,7 +18,7 @@ An AI-powered parts procurement tool for heavy-duty fleet operators. Enter a VIN
 - Client-side filters: source (OEM / Aftermarket), fitment confidence, price range, year range
 - Clarifying question flow: if the intent is ambiguous, the AI asks a follow-up and re-searches inline without leaving the results page
 
-### Vendor outreach (new)
+### Vendor outreach 
 - Vendor catalog seeded from 10 real heavy-duty parts suppliers, matched to parts by source type (OE vendors → OE parts, Aftermarket vendors → Aftermarket parts)
 - Operator selects a vendor from a scored list showing response rate, ETA, and price — vendors that can't meet an urgent deadline are visually dimmed
 - AI (Claude Haiku) generates a professional outreach email tailored to the vendor type, part, VIN spec, and urgency deadline
